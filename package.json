@@ -1,0 +1,10 @@
+{
+  "name": "deep-field",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An arcade space shooter set in the Hubble Ultra Deep Field.",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve@14 ."
+  }
+}

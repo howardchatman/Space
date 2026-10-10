@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Deep Field</title>
+  <meta name="description" content="An arcade space shooter set in the Hubble Ultra Deep Field.">
+  <meta name="theme-color" content="#05061a">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="game">
+    <canvas id="field" aria-label="Play field"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+
+    <header id="hud" hidden>
+      <div class="hud-score">
+        <span class="hud-label">Score</span>
+        <span id="hud-score" class="hud-value">0</span>
+        <span class="chips">
+          <span id="hud-mult" class="chip mult" hidden>×2</span>
+          <span id="hud-overdrive" class="chip overdrive" hidden>Overdrive</span>
+        </span>
+      </div>
+      <div class="hud-sector">
+        <span class="hud-label">Sector</span>
+        <span id="hud-wave" class="hud-value">01</span>
+      </div>
+      <div class="hud-right">
+        <div class="meters">
+          <span class="hud-label">Shield</span>
+          <span id="meter-shield" class="meter"><span id="hud-shield"></span></span>
+          <span class="hud-label">Boost</span>
+          <span class="meter boost"><span id="hud-boost"></span></span>
+        </div>
+        <div class="hud-actions">
+          <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.5" height="12" /><rect x="9.5" y="2" width="3.5" height="12" /></svg>
+          </button>
+          <button id="btn-mute" class="icon-btn" type="button" aria-label="Mute sound" aria-pressed="false">
+            <svg class="icon-sound" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l4-3.5v11L5 10H2z" /><path class="wave" d="M11.5 5.5a3.5 3.5 0 0 1 0 5M13.5 3.5a6.3 6.3 0 0 1 0 9" /></svg>
+            <svg class="icon-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l4-3.5v11L5 10H2z" /><path class="wave" d="M11 6l4 4M15 6l-4 4" /></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div id="banner" aria-live="polite">
+      <span id="banner-title" class="banner-title"></span>
+      <span id="banner-sub" class="banner-sub"></span>
+    </div>
+
+    <p id="touch-hint" hidden>Drag here to fly</p>
+    <div id="touch-controls" hidden>
+      <button id="touch-boost" class="touch-btn boost" type="button">Boost</button>
+      <button id="touch-fire" class="touch-btn fire" type="button">Fire</button>
+    </div>
+
+    <section id="screen-title" class="screen" aria-labelledby="title-logo">
+      <div class="panel title-panel">
+        <p class="eyebrow">Ultra Deep Field · RA 03h 32m 39s · Dec −27° 47′ 29″</p>
+        <h1 id="title-logo" class="logo"><span>Deep</span> <span class="logo-outline">Field</span></h1>
+        <p class="lede">About ten thousand galaxies fill this patch of sky. Clear the debris, outfly the drones, and refit your ship after every sector.</p>
+        <div class="actions">
+          <button id="btn-start" class="btn primary" type="button" data-autofocus>Launch</button>
+          <p class="best">Best <span id="title-best">0</span></p>
+        </div>
+        <dl class="controls keyboard-only">
+          <div><dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Turn</dd></div>
+          <div><dt><kbd>↑</kbd></dt><dd>Thrust</dd></div>
+          <div><dt><kbd>Space</kbd></dt><dd>Fire</dd></div>
+          <div><dt><kbd>Shift</kbd></dt><dd>Boost</dd></div>
+          <div><dt><kbd>P</kbd></dt><dd>Pause</dd></div>
+          <div><dt><kbd>M</kbd></dt><dd>Sound</dd></div>
+        </dl>
+        <dl class="controls touch-only">
+          <div><dt>Left thumb</dt><dd>Drag to steer and thrust</dd></div>
+          <div><dt>Right thumb</dt><dd>Hold Fire, tap Boost</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section id="screen-upgrade" class="screen" aria-labelledby="upgrade-heading" hidden>
+      <div class="panel wide">
+        <p id="upgrade-eyebrow" class="eyebrow">Sector 01 clear</p>
+        <h2 id="upgrade-heading" class="heading">Choose a refit</h2>
+        <div id="upgrade-options" class="options"></div>
+        <p class="hint keyboard-only">Press 1, 2 or 3</p>
+      </div>
+    </section>
+
+    <section id="screen-paused" class="screen" aria-labelledby="paused-heading" hidden>
+      <div class="panel narrow">
+        <h2 id="paused-heading" class="heading">Paused</h2>
+        <div class="actions stack">
+          <button id="btn-resume" class="btn primary" type="button" data-autofocus>Resume</button>
+          <button id="btn-restart" class="btn" type="button">Restart</button>
+          <button id="btn-quit" class="btn" type="button">Quit to title</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-over" class="screen" aria-labelledby="over-heading" hidden>
+      <div class="panel narrow">
+        <p class="eyebrow">Signal lost</p>
+        <h2 id="over-heading" class="heading">Ship destroyed</h2>
+        <dl class="stats">
+          <div><dt>Score</dt><dd id="over-score">0</dd></div>
+          <div><dt>Sector</dt><dd id="over-wave">01</dd></div>
+          <div><dt>Best</dt><dd id="over-best">0</dd></div>
+        </dl>
+        <p id="over-note" class="note" hidden>New best score</p>
+        <div class="actions">
+          <button id="btn-again" class="btn primary" type="button" data-autofocus>Fly again</button>
+          <button id="btn-over-quit" class="btn" type="button">Title</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
