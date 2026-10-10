@@ -3,17 +3,16 @@ import { Input } from './input.js';
 import { Sound } from './audio.js';
 import { UI } from './ui.js';
 
-/** Canvas colors come from the CSS tokens in styles.css, so the palette lives in one place. */
+/** Colors come from the CSS tokens in styles.css, so the palette lives in one place. */
 function readPalette() {
   const css = getComputedStyle(document.documentElement);
   const token = (name) => css.getPropertyValue(name).trim();
   return {
     void: token('--void'),
-    voidRaised: token('--void-raised'),
+    panel: token('--panel'),
+    line: token('--line'),
     hull: token('--hull'),
     dim: token('--dim'),
-    rock: token('--rock'),
-    rockEdge: token('--rock-edge'),
     flare: token('--flare'),
     flareHot: token('--flare-hot'),
     hostile: token('--hostile'),
@@ -22,46 +21,71 @@ function readPalette() {
   };
 }
 
-const canvas = document.getElementById('field');
+function showFailure(message) {
+  const el = document.getElementById('failure');
+  el.querySelector('p').textContent = message;
+  el.hidden = false;
+  document.getElementById('screen-title').hidden = true;
+}
+
+const canvas = document.getElementById('view');
 const ui = new UI();
 const input = new Input(canvas, { fireButton: ui.fireButton, boostButton: ui.boostButton });
 const sound = new Sound();
-const game = new Game({ canvas, ui, input, sound, palette: readPalette() });
 
-ui.bind({
-  start: () => game.start(),
-  pause: () => game.pause(),
-  resume: () => game.resume(),
-  quit: () => game.toTitle(),
-  toggleMute: () => game.toggleMute(),
-});
-ui.setMuted(sound.muted);
+let game;
+try {
+  game = new Game({ canvas, hudCanvas: document.getElementById('hud-canvas'), ui, input, sound, palette: readPalette() });
+} catch (error) {
+  console.error(error);
+  showFailure('This browser could not start 3D graphics (WebGL 2). Try a current version of Chrome, Edge, Firefox or Safari.');
+}
 
-input.onTouch = () => ui.setTouchMode(true);
-if (window.matchMedia?.('(pointer: coarse)').matches) ui.setTouchMode(true);
+if (game) {
+  ui.bind({
+    start: () => {
+      game.start();
+      input.requestLock();
+    },
+    pause: () => game.pause(),
+    resume: () => game.resume(),
+    quit: () => game.toTitle(),
+    toggleMute: () => game.toggleMute(),
+  });
+  ui.setMuted(sound.muted);
 
-// Browsers only start audio after the player interacts with the page.
-window.addEventListener('pointerdown', () => sound.unlock());
-window.addEventListener('keydown', () => sound.unlock());
+  input.onTouch = () => ui.setTouchMode(true);
+  input.onLockChange = (locked) => game.onLockChange(locked);
+  if (window.matchMedia?.('(pointer: coarse)').matches) input.useTouch();
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) game.pause();
-});
-window.addEventListener('blur', () => game.pause());
+  // Clicking the view while flying captures the mouse for steering.
+  canvas.addEventListener('click', () => {
+    if (game.state === 'playing') input.requestLock();
+  });
 
-new ResizeObserver(() => game.resize()).observe(canvas);
-game.resize();
+  // Browsers only start audio after the player interacts with the page.
+  window.addEventListener('pointerdown', () => sound.unlock());
+  window.addEventListener('keydown', () => sound.unlock());
 
-// Handy for tinkering from the browser console, e.g. game.stats.guns = 3.
-window.game = game;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) game.pause();
+  });
 
-let last = performance.now();
-function frame(now) {
-  // Clamp long frames (tab switches, breakpoints) so nothing tunnels through walls.
-  const dt = Math.min((now - last) / 1000, 1 / 30);
-  last = now;
-  game.update(dt);
-  game.render();
+  new ResizeObserver(() => game.resize()).observe(canvas);
+  game.resize();
+
+  // Handy for tinkering from the browser console, e.g. game.stats.guns = 3.
+  window.game = game;
+
+  let last = performance.now();
+  const frame = (now) => {
+    // Clamp long frames (tab switches, breakpoints) so nothing tunnels through anything.
+    const dt = Math.min(Math.max((now - last) / 1000, 0), 1 / 20);
+    last = now;
+    game.update(dt);
+    game.render(dt);
+    ui.setLockHint(game.state === 'playing' && !input.locked && !input.touchSeen);
+    requestAnimationFrame(frame);
+  };
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);

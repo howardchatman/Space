@@ -1,9 +1,9 @@
-// Refits offered between sectors. Each one mutates the ship's stats (see baseStats in entities/ship.js).
+// Refits offered between sectors. Each one mutates the ship's stats (see baseStats in entities/player.js).
 export const UPGRADES = [
   {
     id: 'cannon',
-    name: 'Extra Barrel',
-    desc: 'Adds a cannon. The third one fans your shots out.',
+    name: 'Linked Cannons',
+    desc: 'Both wing cannons fire together. Second level adds a nose cannon.',
     max: 2,
     apply: (s) => { s.guns += 1; },
   },
@@ -16,22 +16,22 @@ export const UPGRADES = [
   },
   {
     id: 'rounds',
-    name: 'Tungsten Rounds',
-    desc: 'Each shot deals 1 more damage.',
+    name: 'Heavy Bolts',
+    desc: 'Each bolt deals 1 more damage.',
     max: 3,
-    apply: (s) => { s.bulletDamage += 1; },
+    apply: (s) => { s.boltDamage += 1; },
   },
   {
     id: 'rail',
-    name: 'Rail Accelerator',
-    desc: 'Shots fly 20% faster and reach farther.',
+    name: 'Focusing Coils',
+    desc: 'Bolts fly 20% faster and reach farther.',
     max: 3,
-    apply: (s) => { s.bulletSpeed *= 1.2; s.bulletLife *= 1.1; },
+    apply: (s) => { s.boltSpeed *= 1.2; s.boltRange *= 1.12; },
   },
   {
     id: 'plating',
-    name: 'Hull Plating',
-    desc: 'Max shield +25, and a full repair now.',
+    name: 'Shield Emitters',
+    desc: 'Max shield +25, and a full recharge now.',
     max: 4,
     apply: (s, ship) => { s.maxShield += 25; ship.shield = s.maxShield; },
   },
@@ -45,9 +45,14 @@ export const UPGRADES = [
   {
     id: 'ion',
     name: 'Ion Thrusters',
-    desc: 'Thrust, turning and top speed +12%.',
+    desc: 'Top speed, acceleration and turning +12%.',
     max: 3,
-    apply: (s) => { s.thrust *= 1.12; s.maxSpeed *= 1.12; s.turnRate *= 1.12; },
+    apply: (s) => {
+      s.maxSpeed *= 1.12;
+      s.accel *= 1.12;
+      s.turnRate *= 1.12;
+      s.rollRate *= 1.12;
+    },
   },
   {
     id: 'afterburner',
@@ -59,7 +64,7 @@ export const UPGRADES = [
   {
     id: 'tractor',
     name: 'Tractor Beam',
-    desc: 'Pulls in pickups from twice as far away.',
+    desc: 'Pulls in supply crystals from twice as far away.',
     max: 2,
     apply: (s) => { s.magnetRange *= 2; },
   },

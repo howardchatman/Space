@@ -1,8 +1,8 @@
 {
   "name": "deep-field",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "An arcade space shooter set in the Hubble Ultra Deep Field.",
+  "description": "A first-person space combat game in the browser, built with Three.js.",
   "type": "module",
   "scripts": {
     "start": "npx --yes serve@14 ."

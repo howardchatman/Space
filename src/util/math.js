@@ -1,29 +1,32 @@
 export const TAU = Math.PI * 2;
 
 export const rand = (min, max) => min + Math.random() * (max - min);
+export const randInt = (min, max) => Math.floor(rand(min, max + 1));
 export const pick = (items) => items[Math.floor(Math.random() * items.length)];
 export const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
 
-/** Signed shortest turn from one angle to another, in the range [-PI, PI]. */
-export function angleDiff(from, to) {
-  let d = (to - from) % TAU;
-  if (d > Math.PI) d -= TAU;
-  if (d < -Math.PI) d += TAU;
-  return d;
+/** Frame-rate independent smoothing factor: how far to move toward a target this frame. */
+export const smooth = (rate, dt) => 1 - Math.exp(-rate * dt);
+
+/** Small deterministic PRNG, so procedural content can be reproduced from a seed. */
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-export function circlesOverlap(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  const r = a.radius + b.radius;
-  return dx * dx + dy * dy < r * r;
-}
-
-/** Wraps an entity around the field edges once it has fully left the screen. */
-export function wrapEntity(e, width, height) {
-  const m = e.radius;
-  if (e.x < -m) e.x += width + 2 * m;
-  else if (e.x > width + m) e.x -= width + 2 * m;
-  if (e.y < -m) e.y += height + 2 * m;
-  else if (e.y > height + m) e.y -= height + 2 * m;
+/** Uniformly random unit vector, written into `out` ({x, y, z} or THREE.Vector3). */
+export function randomUnit(out, rng = Math.random) {
+  const z = rng() * 2 - 1;
+  const a = rng() * TAU;
+  const r = Math.sqrt(1 - z * z);
+  out.x = Math.cos(a) * r;
+  out.y = Math.sin(a) * r;
+  out.z = z;
+  return out;
 }

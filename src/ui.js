@@ -71,7 +71,7 @@ export class UI {
     $('title-best').textContent = formatScore(best);
   }
 
-  updateHud({ score, multiplier, overdrive, wave, shield, maxShield, boost }) {
+  updateHud({ score, multiplier, overdrive, wave, hostiles, shield, maxShield, boost, speed, throttle }) {
     this.#set('score', formatScore(score), (v) => { $('hud-score').textContent = v; });
     this.#set('mult', multiplier, (v) => {
       const el = $('hud-mult');
@@ -80,14 +80,29 @@ export class UI {
     });
     this.#set('overdrive', overdrive, (v) => { $('hud-overdrive').hidden = !v; });
     this.#set('wave', pad2(wave), (v) => { $('hud-wave').textContent = v; });
+    this.#set('hostiles', hostiles, (v) => { $('hud-hostiles').textContent = String(v); });
     const shieldPct = Math.max(0, Math.round((shield / maxShield) * 200) / 200);
     this.#set('shield', shieldPct, (v) => {
       $('hud-shield').style.transform = `scaleX(${v})`;
       $('meter-shield').classList.toggle('low', v < 0.3);
     });
+    this.#set('shieldText', Math.max(0, Math.ceil(shield)), (v) => { $('hud-shield-value').textContent = String(v); });
     this.#set('boost', Math.round(boost * 50) / 50, (v) => {
       $('hud-boost').style.transform = `scaleX(${v})`;
     });
+    this.#set('speed', Math.round(speed), (v) => { $('hud-speed').textContent = String(v); });
+    this.#set('throttle', Math.round(throttle * 100) / 100, (v) => {
+      $('hud-throttle').style.transform = `scaleX(${v})`;
+    });
+  }
+
+  /** Red edge glow when the shield takes a hit, 0 to 1. */
+  setHurt(amount) {
+    this.#set('hurt', Math.round(amount * 50) / 50, (v) => { $('hurt').style.opacity = String(v); });
+  }
+
+  setLockHint(on) {
+    this.#set('lockHint', on, (v) => { $('lock-hint').hidden = !v; });
   }
 
   banner(title, sub) {

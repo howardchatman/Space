@@ -4,37 +4,41 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Deep Field</title>
-  <meta name="description" content="An arcade space shooter set in the Hubble Ultra Deep Field.">
+  <meta name="description" content="A first-person space combat game in an asteroid belt above an unnamed blue world.">
   <meta name="theme-color" content="#05061a">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.min.js",
+        "three/addons/": "./vendor/three/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <main id="game">
-    <canvas id="field" aria-label="Play field"></canvas>
-    <div class="vignette" aria-hidden="true"></div>
+    <canvas id="view" aria-label="Cockpit view"></canvas>
+    <canvas id="hud-canvas" aria-hidden="true"></canvas>
+    <div id="hurt" aria-hidden="true"></div>
 
-    <header id="hud" hidden>
-      <div class="hud-score">
-        <span class="hud-label">Score</span>
-        <span id="hud-score" class="hud-value">0</span>
-        <span class="chips">
-          <span id="hud-mult" class="chip mult" hidden>×2</span>
-          <span id="hud-overdrive" class="chip overdrive" hidden>Overdrive</span>
-        </span>
-      </div>
-      <div class="hud-sector">
-        <span class="hud-label">Sector</span>
-        <span id="hud-wave" class="hud-value">01</span>
-      </div>
-      <div class="hud-right">
-        <div class="meters">
-          <span class="hud-label">Shield</span>
-          <span id="meter-shield" class="meter"><span id="hud-shield"></span></span>
-          <span class="hud-label">Boost</span>
-          <span class="meter boost"><span id="hud-boost"></span></span>
+    <div id="hud" hidden>
+      <div class="hud-top">
+        <div class="readout">
+          <span class="hud-label">Score</span>
+          <span id="hud-score" class="hud-value">0</span>
+          <span class="chips">
+            <span id="hud-mult" class="chip mult" hidden>×2</span>
+            <span id="hud-overdrive" class="chip overdrive" hidden>Overdrive</span>
+          </span>
+        </div>
+        <div class="readout center">
+          <span class="hud-label">Sector</span>
+          <span id="hud-wave" class="hud-value">01</span>
+          <span class="hud-sub"><span id="hud-hostiles">0</span> hostiles</span>
         </div>
         <div class="hud-actions">
           <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
@@ -46,38 +50,56 @@
           </button>
         </div>
       </div>
-    </header>
+
+      <div class="hud-bottom">
+        <div class="readout gauges">
+          <span class="hud-label">Shield <span id="hud-shield-value" class="gauge-value">100</span></span>
+          <span id="meter-shield" class="meter"><span id="hud-shield"></span></span>
+          <span class="hud-label">Boost</span>
+          <span class="meter boost"><span id="hud-boost"></span></span>
+        </div>
+        <div class="readout gauges right">
+          <span class="hud-label">Speed <span class="gauge-value"><span id="hud-speed">0</span> m/s</span></span>
+          <span class="meter throttle"><span id="hud-throttle"></span></span>
+          <span class="hud-label">Throttle</span>
+        </div>
+      </div>
+    </div>
+
+    <p id="lock-hint" hidden>Click the view to steer with the mouse · Esc to release</p>
 
     <div id="banner" aria-live="polite">
       <span id="banner-title" class="banner-title"></span>
       <span id="banner-sub" class="banner-sub"></span>
     </div>
 
-    <p id="touch-hint" hidden>Drag here to fly</p>
+    <p id="touch-hint" hidden>Drag here to steer</p>
     <div id="touch-controls" hidden>
       <button id="touch-boost" class="touch-btn boost" type="button">Boost</button>
       <button id="touch-fire" class="touch-btn fire" type="button">Fire</button>
     </div>
 
-    <section id="screen-title" class="screen" aria-labelledby="title-logo">
+    <section id="screen-title" class="screen title" aria-labelledby="title-logo">
       <div class="panel title-panel">
-        <p class="eyebrow">Ultra Deep Field · RA 03h 32m 39s · Dec −27° 47′ 29″</p>
+        <p class="eyebrow">Interceptor DF-7 · High orbit debris belt</p>
         <h1 id="title-logo" class="logo"><span>Deep</span> <span class="logo-outline">Field</span></h1>
-        <p class="lede">About ten thousand galaxies fill this patch of sky. Clear the debris, outfly the drones, and refit your ship after every sector.</p>
+        <p class="lede">Hold the debris belt above an unnamed blue world. Hunt the drones that drop out of warp, break rock for supplies, and refit your interceptor between sectors.</p>
         <div class="actions">
           <button id="btn-start" class="btn primary" type="button" data-autofocus>Launch</button>
           <p class="best">Best <span id="title-best">0</span></p>
         </div>
         <dl class="controls keyboard-only">
-          <div><dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Turn</dd></div>
-          <div><dt><kbd>↑</kbd></dt><dd>Thrust</dd></div>
-          <div><dt><kbd>Space</kbd></dt><dd>Fire</dd></div>
+          <div><dt><kbd>Mouse</kbd></dt><dd>Steer</dd></div>
+          <div><dt><kbd>Click</kbd><kbd>Space</kbd></dt><dd>Fire</dd></div>
+          <div><dt><kbd>W</kbd><kbd>S</kbd></dt><dd>Throttle</dd></div>
+          <div><dt><kbd>A</kbd><kbd>D</kbd></dt><dd>Strafe</dd></div>
+          <div><dt><kbd>Q</kbd><kbd>E</kbd></dt><dd>Roll</dd></div>
           <div><dt><kbd>Shift</kbd></dt><dd>Boost</dd></div>
-          <div><dt><kbd>P</kbd></dt><dd>Pause</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Pause</dd></div>
           <div><dt><kbd>M</kbd></dt><dd>Sound</dd></div>
         </dl>
         <dl class="controls touch-only">
-          <div><dt>Left thumb</dt><dd>Drag to steer and thrust</dd></div>
+          <div><dt>Left thumb</dt><dd>Drag to steer</dd></div>
           <div><dt>Right thumb</dt><dd>Hold Fire, tap Boost</dd></div>
         </dl>
       </div>
@@ -117,6 +139,13 @@
           <button id="btn-again" class="btn primary" type="button" data-autofocus>Fly again</button>
           <button id="btn-over-quit" class="btn" type="button">Title</button>
         </div>
+      </div>
+    </section>
+
+    <section id="failure" class="screen" hidden>
+      <div class="panel narrow">
+        <h2 class="heading">Can't start the game</h2>
+        <p class="lede"></p>
       </div>
     </section>
   </main>

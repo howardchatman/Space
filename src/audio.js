@@ -54,6 +54,11 @@ export class Sound {
   enemyShot() { this.#tone({ type: 'sawtooth', freq: 420, to: 140, dur: 0.16, vol: 0.04 }); }
   chip() { this.#noise({ dur: 0.06, vol: 0.06, from: 3000, to: 900, type: 'bandpass', q: 2 }); }
   boost() { this.#noise({ dur: 0.4, vol: 0.14, from: 300, to: 2400, type: 'bandpass', q: 1.2 }); }
+  warp() {
+    this.#noise({ dur: 0.7, vol: 0.12, from: 200, to: 3800, type: 'bandpass', q: 3 });
+    this.#tone({ type: 'sine', freq: 90, to: 360, dur: 0.6, vol: 0.08 });
+  }
+
   select() { this.#tone({ type: 'triangle', freq: 520, to: 780, dur: 0.12, vol: 0.12 }); }
 
   explode(size = 1) {
