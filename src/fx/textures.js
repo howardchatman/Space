@@ -42,24 +42,6 @@ export function sunTexture() {
   });
 }
 
-/** Lumpy smoke-and-flame puff for explosions. */
-export function puffTexture() {
-  return canvasTexture('puff', 128, (g, s) => {
-    for (let i = 0; i < 26; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * s * 0.18;
-      const x = s / 2 + Math.cos(a) * r;
-      const y = s / 2 + Math.sin(a) * r;
-      const rad = s * (0.12 + Math.random() * 0.2);
-      const grad = g.createRadialGradient(x, y, 0, x, y, rad);
-      grad.addColorStop(0, 'rgba(255,255,255,0.35)');
-      grad.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, s, s);
-    }
-  });
-}
-
 /** Thin bright ring for shockwaves. */
 export function ringTexture() {
   return canvasTexture('ring', 256, (g, s) => {

@@ -96,8 +96,19 @@ export class CapitalShip {
     this.position.addScaledVector(this.velocity, dt);
     this.#applyTransform();
 
-    const thrust = Math.max(0.15, Math.abs(this.throttle));
-    for (const glow of this.model.engines) glow.scale.setScalar(26 + thrust * 30 + Math.random() * 3);
+    const thrust = Math.max(0.15, Math.abs(this.throttle)) * (this.enginesDown ? 0 : 1);
+    const glowSize = this.model.engineGlowSize ?? 1;
+    for (const glow of this.model.engines) {
+      glow.visible = !this.enginesDown;
+      glow.scale.setScalar((26 + thrust * 30 + Math.random() * 3) * glowSize);
+    }
+    for (const plume of this.model.plumes ?? []) {
+      plume.visible = thrust > 0.02;
+      plume.scale.z = 0.3 + thrust * 0.9 + Math.random() * 0.06;
+      plume.material.uniforms.uIntensity.value = 0.35 + thrust * 0.9;
+    }
+    if (this.model.radar) this.model.radar.rotation.y += dt * 0.9;
+    this.model.shield?.update(dt);
     for (const light of this.model.navLights) {
       if (light.userData.blink) light.visible = Math.floor(time * 1.25) % 2 === 0 && (time * 1.25) % 1 < 0.15;
     }
@@ -107,6 +118,7 @@ export class CapitalShip {
   aimTurrets(point, dt) {
     const ready = [];
     for (const t of this.model.turrets) {
+      if (t.disabled) continue;
       const local = t.base.worldToLocal(this._v.copy(point));
       let yaw = Math.atan2(-local.x, -local.z);
       const h = Math.hypot(local.x, local.z);
@@ -133,6 +145,7 @@ export class CapitalShip {
   /** Swings turrets back to their rest positions. */
   restTurrets(dt) {
     for (const t of this.model.turrets) {
+      if (t.disabled) continue;
       const fromRest = Math.atan2(Math.sin(t.yaw.rotation.y - t.restYaw), Math.cos(t.yaw.rotation.y - t.restYaw));
       t.yaw.rotation.y -= clamp(fromRest, -TURRET_YAW_SPEED * dt * 0.5, TURRET_YAW_SPEED * dt * 0.5);
       t.pitch.rotation.x -= clamp(t.pitch.rotation.x, -TURRET_PITCH_SPEED * dt * 0.5, TURRET_PITCH_SPEED * dt * 0.5);
@@ -142,6 +155,11 @@ export class CapitalShip {
   /** World position of one of a turret's barrel tips. */
   muzzle(turret, index, out = new THREE.Vector3()) {
     return turret.pitch.localToWorld(out.copy(turret.muzzles[index]));
+  }
+
+  /** Shows a ripple on the shield bubble where a shot struck it. */
+  shieldHit(worldPoint) {
+    this.model.shield?.hit(worldPoint);
   }
 
   /** Absorbs damage with shields first. Returns the damage that reached the hull. */

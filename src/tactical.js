@@ -119,6 +119,15 @@ export class TacticalMap {
         this.#diamond(x, y, 9, p.hostile, true);
         ctx.fillStyle = p.hostile;
         ctx.fillText(c.stale ? 'FLAGSHIP (LAST SEEN)' : 'FLAGSHIP', x + 13, y + 4);
+      } else if (c.kind === 'corvette') {
+        this.#diamond(x, y, 6, p.hostile, false);
+        ctx.fillStyle = p.hostile;
+        ctx.fillText('CORVETTE', x + 10, y + 4);
+      } else if (c.kind === 'torpedo') {
+        ctx.fillStyle = p.hostile;
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, TAU);
+        ctx.fill();
       } else if (c.kind === 'fighter') {
         ctx.fillStyle = p.hostile;
         ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
@@ -130,6 +139,20 @@ export class TacticalMap {
         ctx.fillRect(x - 2, y - 2, 4, 4);
       }
     }
+
+    // Where each scout is headed.
+    ctx.strokeStyle = p.ice;
+    ctx.globalAlpha = 0.5;
+    ctx.setLineDash([2, 5]);
+    for (const s of view.scouts) {
+      if (!s.route?.length || s.state !== 'patrol') continue;
+      ctx.beginPath();
+      ctx.moveTo(X(s.position), Y(s.position));
+      for (const r of s.route) ctx.lineTo(X(r), Y(r));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
 
     for (const s of view.scouts) {
       ctx.fillStyle = p.ice;

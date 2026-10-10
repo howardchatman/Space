@@ -65,6 +65,13 @@
           <span class="hud-label">Energy <span id="hud-energy" class="gauge-value">100</span></span>
           <span class="meter energy"><span id="hud-energy-bar"></span></span>
           <dl id="hud-systems" class="systems"></dl>
+          <span class="hud-label power-label">Power</span>
+          <div id="hud-power" class="power" role="group" aria-label="Power distribution">
+            <button type="button" data-power="balanced" title="Balance power (8)">Bal</button>
+            <button type="button" data-power="weapons" title="Power to weapons (5)">Wpn</button>
+            <button type="button" data-power="shields" title="Power to shields (6)">Shd</button>
+            <button type="button" data-power="engines" title="Power to engines (7)">Eng</button>
+          </div>
         </section>
         <section class="readout target-panel" aria-label="Target and helm">
           <span class="hud-label">Target</span>
@@ -115,15 +122,22 @@
       <header class="map-head">
         <div>
           <p class="eyebrow">Tactical map</p>
-          <p class="map-hint">Click anywhere to set a course. Shaded space is unexplored: send recon to scan it.</p>
+          <p id="map-hint" class="map-hint">Click anywhere to set a course. Shaded space is unexplored: send recon to scan it.</p>
         </div>
-        <button id="btn-map-close" class="btn" type="button">Close <kbd>Tab</kbd></button>
+        <div class="map-tools">
+          <div id="map-mode" class="segmented" role="group" aria-label="What a click on the map does">
+            <button type="button" data-map-mode="course" aria-pressed="true">Set course</button>
+            <button type="button" data-map-mode="recon" aria-pressed="false">Send recon</button>
+          </div>
+          <button id="btn-map-close" class="btn" type="button">Close <kbd>Tab</kbd></button>
+        </div>
       </header>
       <ul class="map-legend">
         <li><span class="key-ship"></span>Your warship</li>
         <li><span class="key-scout"></span>Recon</li>
         <li><span class="key-flag"></span>Enemy flagship</li>
         <li><span class="key-fighter"></span>Fighters</li>
+        <li><span class="key-corvette"></span>Corvettes</li>
         <li><span class="key-sat"></span>Derelict (salvage)</li>
       </ul>
     </section>
@@ -182,6 +196,7 @@
     <section id="screen-upgrade" class="screen" aria-labelledby="upgrade-heading" hidden>
       <div class="panel wide">
         <p id="upgrade-eyebrow" class="eyebrow">Arrived in sector 02</p>
+        <dl id="report" class="stats report" aria-label="After-action report" hidden></dl>
         <h2 id="upgrade-heading" class="heading">Choose a refit</h2>
         <div id="upgrade-options" class="options"></div>
         <p class="hint keyboard-only">Press 1, 2 or 3</p>

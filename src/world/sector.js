@@ -2,6 +2,15 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { mulberry32, randomUnit } from '../util/math.js';
 
+// Emission nebula palettes: [glowing heart, outer clouds].
+const NEBULA_COLORS = [
+  [[0.2, 0.75, 0.7], [0.18, 0.3, 0.85]],
+  [[0.9, 0.25, 0.45], [0.75, 0.2, 0.18]],
+  [[0.95, 0.55, 0.2], [0.6, 0.22, 0.4]],
+  [[0.3, 0.85, 0.5], [0.15, 0.4, 0.75]],
+  [[0.7, 0.4, 0.95], [0.85, 0.3, 0.55]],
+];
+
 /**
  * Lays out one sector from a seed: where you arrive, where the enemy flagship hides, asteroid clusters,
  * derelict satellites, enemy patrols, and the sun and planet on the horizon.
@@ -63,6 +72,13 @@ export function generateSector(index, seed) {
     planetDir.normalize();
   } while (planetDir.angleTo(sunDirection) < 0.9 || planetDir.z > 0.3);
 
+  // A nebula somewhere in the sky that isn't behind the sun or the planet, in this sector's colors.
+  const nebulaDir = new THREE.Vector3();
+  do {
+    randomUnit(nebulaDir, rng);
+  } while (nebulaDir.angleTo(sunDirection) < 0.9 || nebulaDir.angleTo(planetDir) < 0.7);
+  const [inner, outer] = NEBULA_COLORS[Math.floor(rng() * NEBULA_COLORS.length)];
+
   return {
     index,
     seed,
@@ -72,6 +88,13 @@ export function generateSector(index, seed) {
     satellites,
     patrols,
     sunDirection,
+    nebula: {
+      direction: nebulaDir,
+      inner: new THREE.Color(...inner),
+      outer: new THREE.Color(...outer),
+      size: between(0.45, 0.75),
+      seed: between(0, 50),
+    },
     planet: {
       position: planetDir.multiplyScalar(between(30000, 38000)),
       radius: between(8000, 11500),

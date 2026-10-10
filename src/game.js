@@ -4,6 +4,7 @@ import { COMMANDS } from './commands.js';
 import { Pipeline } from './engine/renderer.js';
 import { bakeMilkyWay, createStars } from './world/sky.js';
 import { Sun } from './world/sun.js';
+import { useShadows } from './fx/shadows.js';
 import { Planet } from './world/planet.js';
 import { SpaceDust } from './world/dust.js';
 import { AsteroidField } from './world/asteroids.js';
@@ -14,14 +15,18 @@ import { Scout } from './entities/scout.js';
 import { Flagship } from './entities/flagship.js';
 import { Satellite } from './entities/satellite.js';
 import { CapitalShip } from './entities/capital.js';
-import { buildCapitalShip } from './entities/shipmodel.js';
+import { buildCapitalShip, buildCorvette } from './entities/shipmodel.js';
+import { Corvette } from './entities/corvette.js';
+import { Torpedo } from './entities/torpedo.js';
 import { Bolts, segmentHitsSphere } from './entities/bolts.js';
 import { Pickups } from './entities/pickups.js';
 import { Effects } from './fx/effects.js';
 import { WarpTunnel } from './fx/warp.js';
+import { Trails } from './fx/trails.js';
 import { glowTexture } from './fx/textures.js';
 import { addMuzzleFlashes, buildCockpit } from './cockpit.js';
 import { buildBridge } from './bridge.js';
+import { BridgeCrew } from './bridgecrew.js';
 import { Hud } from './hud.js';
 import { TacticalMap } from './tactical.js';
 import { Engineering, SYSTEMS } from './engineering.js';
@@ -45,6 +50,7 @@ const MUZZLES = {
 };
 
 // Explosion color ramps: [flash, body, smoke].
+const TRAIL_OFFSET = new THREE.Vector3(0, 0, -3); // behind a small craft's engine (craft face +Z)
 const DUST_TINT = [new THREE.Color(1, 0.95, 0.85), new THREE.Color(0.42, 0.36, 0.3), new THREE.Color(0.12, 0.1, 0.09)];
 
 function loadBest() {
@@ -99,13 +105,14 @@ export class Game {
 
     // Sky and lighting. The sun direction is one shared vector the planet and sun both read.
     this.sunDirection = new THREE.Vector3(0.36, 0.27, -0.89).normalize();
-    this.milkyWay = bakeMilkyWay(renderer, this.lowPower ? 256 : 512);
-    this.scene.background = this.milkyWay.texture;
+    this.milkyWay = null; // baked with each sector's nebula in #buildSector
     this.stars = createStars(this.lowPower ? 6000 : 9500);
     this.scene.add(this.stars);
     this.sun = new Sun(this.sunDirection);
     this.sun.direction = this.sunDirection;
     this.scene.add(this.sun.light, this.sun.group);
+    this.shadows = this.pipeline.shadows;
+    if (this.shadows) this.sun.enableShadows(this.scene);
     this.planetShine = new THREE.DirectionalLight(0x5f84bd, 0.22);
     this.scene.add(this.planetShine, new THREE.AmbientLight(0xffffff, 0.02));
     // One interior light on the camera serves both the bridge and the scout cockpit.
@@ -115,21 +122,25 @@ export class Game {
 
     this.dust = new SpaceDust(this.lowPower ? 450 : 700);
     this.scene.add(this.dust.lines);
-    this.field = new AsteroidField(this.scene, { lowPower: this.lowPower });
+    this.field = new AsteroidField(this.scene, { lowPower: this.lowPower, shadows: this.shadows });
     this.bolts = new Bolts(this.scene, {
       fighter: { radius: 0.07, length: 28, color: this.colors.flare.clone().multiplyScalar(1.7), glow: 2.2 },
       battery: { radius: 0.9, length: 46, color: this.colors.flare.clone().multiplyScalar(2.4), glow: 14 },
       hostile: { radius: 0.3, length: 14, color: this.colors.hostile.clone().multiplyScalar(6), glow: 6 },
       hostileBattery: { radius: 0.9, length: 40, color: this.colors.hostile.clone().multiplyScalar(4), glow: 16 },
+      pd: { radius: 0.14, length: 18, color: this.colors.flare.clone().lerp(new THREE.Color(1, 1, 0.85), 0.5).multiplyScalar(2.2), glow: 3 },
     });
     this.pickups = new Pickups(this.scene, { energy: this.colors.energy, shield: this.colors.ice, overdrive: this.colors.flareHot });
+    this.trails = new Trails(this.scene);
     this.effects = new Effects(this.scene, this.field.geometries.small[0], this.field.materials[1]);
     this.droneTemplate = buildDroneModel(this.colors.hostile);
     this.scoutTemplate = buildDroneModel(this.colors.ice, 0xb9bec7);
+    if (this.shadows) for (const t of [this.droneTemplate, this.scoutTemplate]) useShadows(t);
 
     // Your warship and its bridge.
     const model = buildCapitalShip({ hostile: false, seed: 7, colors: this.colors });
     this.scene.add(model.object);
+    if (this.shadows) useShadows(model.object); // before the bridge goes on: it never shades its own view
     this.warship = new CapitalShip(model, {
       hull: CONFIG.warship.hull,
       shield: CONFIG.warship.shield,
@@ -142,6 +153,8 @@ export class Game {
     this.warship.name = 'Your warship';
     this.bridge = buildBridge(this.colors);
     model.bridgeAnchor.add(this.bridge);
+    this.bridgeCrew = new BridgeCrew(this.bridge, this.colors);
+    crew.onSay = (station) => this.bridgeCrew.speak(station);
     this.beam = this.#buildBeam();
 
     this.cockpit = buildCockpit({ flare: this.colors.flare, ice: this.colors.ice });
@@ -168,6 +181,7 @@ export class Game {
     this.mode = 'bridge';
     this.look = { yaw: 0, pitch: -0.1 };
     this.mapOpen = false;
+    this.mapMode = 'course';
     this.popups = [];
     this.shake = 0;
     this.hurt = 0;
@@ -222,6 +236,7 @@ export class Game {
     this.levels = {};
     this.systems = Object.fromEntries(SYSTEMS.map((s) => [s.id, 1]));
     this.energy = this.shipStats.maxEnergy;
+    this.power = 'balanced';
     this.score = 0;
     this.chain = 0;
     this.multiplier = 1;
@@ -231,6 +246,8 @@ export class Game {
     w.maxShield = w.shield = this.shipStats.maxShield;
     w.dead = false;
     w.object.visible = true;
+    this.wrecks = this.wrecks?.filter((wreck) => wreck.ship !== w) ?? [];
+    this.#mend(w);
     this.lastHit = -10;
     this.alerts = {};
     this.deathTimer = 0;
@@ -244,6 +261,9 @@ export class Game {
     this.spec = spec;
 
     // Sky.
+    this.milkyWay?.dispose();
+    this.milkyWay = bakeMilkyWay(this.renderer, this.lowPower ? 256 : 512, spec.nebula);
+    this.scene.background = this.milkyWay.texture;
     this.sunDirection.copy(spec.sunDirection);
     this.sun.light.position.copy(this.sunDirection);
     if (this.planet) {
@@ -265,14 +285,25 @@ export class Game {
     this.satellites = spec.satellites.map((p, i) => {
       const sat = new Satellite(p, `Derelict ${String.fromCharCode(65 + i)}`);
       this.scene.add(sat.object);
+      if (this.shadows) useShadows(sat.object);
       return sat;
     });
 
     const flagModel = buildCapitalShip({ hostile: true, seed: seed + 1, colors: this.colors });
+    if (this.shadows) useShadows(flagModel.object);
     this.scene.add(flagModel.object);
     this.flagship = new Flagship(flagModel, index);
     this.flagship.position.copy(spec.flagship);
     this.flagship.setHeading(rand(0, Math.PI * 2));
+
+    // Corvette escorts around the flagship, and a roaming corvette from sector 2 on.
+    for (let i = 0; i < Math.min(index, 3); i++) {
+      const offset = new THREE.Vector3(Math.cos(i * 2.1), 0, Math.sin(i * 2.1)).multiplyScalar(650);
+      this.#spawnCorvette(offset.add(spec.flagship), this.flagship, seed + 10 + i);
+    }
+    if (index >= 2 && spec.patrols.length) {
+      this.#spawnCorvette(spec.patrols[0].position.clone().add(new THREE.Vector3(250, 0, 0)), null, seed + 20);
+    }
 
     for (const patrol of spec.patrols) {
       for (let i = 0; i < patrol.size; i++) {
@@ -305,6 +336,20 @@ export class Game {
     this.ray = { phase: 'idle', t: 0, cooldown: 0, cooldownTotal: 1, pending: 0, target: null };
     this.senseTimer = 0;
     this.targetTimer = 0;
+    this.pdTimer = 0;
+    this.report = { start: this.time, fighters: 0, corvettes: 0, torpedoes: 0, parts: 0, hullLost: 0, salvage: 0 };
+  }
+
+  #spawnCorvette(position, escort, seed) {
+    const model = buildCorvette({ seed, colors: this.colors });
+    if (this.shadows) useShadows(model.object);
+    this.scene.add(model.object);
+    const c = new Corvette(model, this.sectorIndex, escort);
+    c.position.copy(position);
+    c.home.copy(position);
+    c.setHeading(rand(0, Math.PI * 2), 0);
+    this.corvettes.push(c);
+    return c;
   }
 
   #clearSector() {
@@ -313,6 +358,12 @@ export class Game {
     for (const s of this.scouts ?? []) this.scene.remove(s.object);
     for (const s of this.satellites ?? []) this.scene.remove(s.object);
     if (this.flagship) this.scene.remove(this.flagship.object);
+    for (const c of this.corvettes ?? []) this.scene.remove(c.object);
+    for (const t of this.torpedoes ?? []) this.scene.remove(t.object);
+    this.corvettes = [];
+    this.torpedoes = [];
+    this.burning = [];
+    this.wrecks = this.wrecks.filter((wreck) => wreck.ship === this.warship);
     this.drones = [];
     this.scouts = [];
     this.launchQueue = [];
@@ -322,6 +373,7 @@ export class Game {
     this.bolts.clear();
     this.pickups.clear();
     this.effects.clear();
+    this.trails.clear();
     this.popups = [];
     this.damage = null;
     this.beam.group.visible = false;
@@ -434,9 +486,37 @@ export class Game {
       this.crew.say('Helm', "That's outside the sector, Captain.");
       return;
     }
+    if (this.mapMode === 'recon') {
+      this.#sendRecon(point);
+      return;
+    }
     this.course = { point, arrive: 250, label: 'waypoint' };
     if (this.warship.throttle < 0.6) this.warship.throttle = 0.85;
     this.crew.say('Helm', `Course laid in. ${km(point.distanceTo(this.warship.position))} to go.`);
+  }
+
+  /** 'course' or 'recon': what a click on the tactical map does. */
+  setMapMode(mode) {
+    this.mapMode = mode;
+    this.ui.setMapMode(mode);
+  }
+
+  /** Sends the nearest free scout (launching one if needed) to scout a point. */
+  #sendRecon(point) {
+    let scout = this.scouts
+      .filter((s) => !s.dead && !s.piloted && s.state !== 'docking')
+      .sort((a, b) => a.position.distanceTo(point) - b.position.distanceTo(point))[0];
+    if (!scout && this.scoutsDocked > 0) {
+      scout = this.#launchScout();
+      this.scoutsDocked -= 1;
+    }
+    if (!scout) {
+      this.crew.say('Flight deck', 'No scouts free, Captain.');
+      return;
+    }
+    point.y += rand(-120, 120);
+    scout.setRoute([point]);
+    this.crew.say('Flight deck', `${scout.name} heading for the marked point, ${km(point.distanceTo(scout.position))} out.`);
   }
 
   // ---------- Orders ----------
@@ -464,6 +544,14 @@ export class Game {
         this.course = null;
         return this.crew.say('Helm', 'All stop.');
       case 'target': return this.#cycleTarget();
+      case 'target-guns': return this.#targetPart('gun');
+      case 'target-engines': return this.#targetPart('engines');
+      case 'target-hangar': return this.#targetPart('hangar');
+      case 'target-hull': return this.#targetPart(null);
+      case 'power-weapons':
+      case 'power-shields':
+      case 'power-engines':
+      case 'power-balanced': return this.#setPower(id.slice(6));
       case 'warp': return this.#orderWarp();
       default: return undefined;
     }
@@ -487,7 +575,7 @@ export class Game {
     }
     this.target = target;
     c.volley = CONFIG.warship.cannon.volley;
-    c.reloadTotal = this.shipStats.reload / (0.4 + 0.6 * this.systems.weapons);
+    c.reloadTotal = (this.shipStats.reload * this.#pf('reload')) / (0.4 + 0.6 * this.systems.weapons);
     c.reload = c.reloadTotal;
     return this.crew.say('Weapons', 'Firing main batteries!');
   }
@@ -591,6 +679,23 @@ export class Game {
     return undefined;
   }
 
+  #setPower(mode) {
+    if (this.power === mode) return;
+    this.power = mode;
+    const lines = {
+      weapons: 'Diverting power to weapons. Batteries will cycle faster, shields will be slow to recover.',
+      shields: 'Diverting power to shields. They will soak more and recharge fast.',
+      engines: 'All power to engines. She will move, but the guns will be slow.',
+      balanced: 'Power balanced across all systems.',
+    };
+    this.crew.say('Engineering', lines[mode]);
+  }
+
+  /** Multiplier for one effect under the current power distribution. */
+  #pf(effect) {
+    return CONFIG.power[this.power][effect];
+  }
+
   #cycleTarget() {
     const options = this.#targetables().filter((c) => c.hostile).map((c) => c.entity);
     if (!options.length) return this.crew.say('Weapons', 'No hostiles on the scope.', { speak: false });
@@ -662,9 +767,10 @@ export class Game {
     const w = this.warship;
     if (!w.dead) {
       this.#helm(dt);
-      w.speedFactor = (0.35 + 0.65 * this.systems.engines) * this.shipStats.speed;
+      w.speedFactor = (0.35 + 0.65 * this.systems.engines) * this.shipStats.speed * this.#pf('speed');
       w.update(dt, this.time);
       this.#weapons(dt);
+      this.#pointDefense(dt);
       this.#shipSystems(dt);
       this.#launches();
     } else {
@@ -779,7 +885,7 @@ export class Game {
             dir.add(randomUnit(new THREE.Vector3()).multiplyScalar(cfg.spread)).normalize();
             this.bolts.fire(origin, dir.multiplyScalar(cfg.boltSpeed).add(w.velocity), {
               look: 'battery',
-              damage: this.shipStats.cannonDamage,
+              damage: this.shipStats.cannonDamage * this.#pf('damage'),
               life: (cfg.range / cfg.boltSpeed) * 1.15,
             });
             this.effects.flash(origin, this.colors.flare, 9, 0.12, 2.2);
@@ -866,9 +972,11 @@ export class Game {
     b.impact.position.set(0, 0, -length);
     b.impact.scale.setScalar(90 * flicker);
 
-    const share = (this.shipStats.rayDamage * dt) / cfg.duration;
+    const share = (this.shipStats.rayDamage * this.#pf('damage') * dt) / cfg.duration;
     if (t && this.#inRayArc(t)) {
       if (t.kind === 'flagship') this.#damageFlagship(share, end);
+      else if (t.kind === 'subsystem') this.#damageFlagship(share, end, t);
+      else if (t.kind === 'corvette') this.#damageCorvette(t, share, end);
       else if (t.kind === 'fighter') this.#hitDrone(t, share, end);
     }
     // Rocks in the beam's path are vaporized.
@@ -914,7 +1022,7 @@ export class Game {
     const s = this.shipStats;
     this.energy = Math.min(s.maxEnergy, this.energy + s.energyRegen * dt);
     if (this.time - this.lastHit > CONFIG.warship.shieldDelay) {
-      w.shield = Math.min(w.maxShield, w.shield + s.shieldRegen * this.systems.shields * dt);
+      w.shield = Math.min(w.maxShield, w.shield + s.shieldRegen * this.#pf('shieldRegen') * this.systems.shields * dt);
       if (w.shield > w.maxShield * 0.5) this.alerts.shieldsDown = false;
     }
     // Engine hum on the bridge follows speed.
@@ -940,6 +1048,7 @@ export class Game {
     scout.velocity.copy(w.velocity);
     this.scene.add(scout.object);
     this.scouts.push(scout);
+    this.trails.attach(scout, { color: this.colors.ice.clone().multiplyScalar(0.45), width: 0.9, offset: TRAIL_OFFSET });
     this.sound.launch();
     return scout;
   }
@@ -953,6 +1062,7 @@ export class Game {
     d.fromFlagship = fromFlagship;
     this.scene.add(d.object);
     this.drones.push(d);
+    this.trails.attach(d, { color: this.colors.flareHot.clone().multiplyScalar(0.5), width: 0.9, offset: TRAIL_OFFSET });
     return d;
   }
 
@@ -973,7 +1083,7 @@ export class Game {
         this.flagshipLastSeen = f.position.clone();
       }
       for (const shot of result.shots) {
-        this.bolts.fire(shot.origin, shot.velocity, { look: 'hostileBattery', hostile: true, damage: CONFIG.flagship.boltDamage, life: 6 });
+        this.bolts.fire(shot.origin, shot.velocity, { look: 'hostileBattery', hostile: true, damage: CONFIG.flagship.boltDamage + CONFIG.flagship.boltDamagePerSector * (this.sectorIndex - 1), life: 6 });
         this.effects.flash(shot.origin, this.colors.hostile, 8, 0.12, 2);
       }
       if (result.launch) this.#launchFighters(2);
@@ -981,6 +1091,22 @@ export class Game {
     } else if (f && !f.dead) {
       f.update(dt, this.time);
     }
+
+    for (const c of this.corvettes) {
+      if (c.dead) continue;
+      if (this.state === 'playing' && !this.warship.dead) {
+        const r = c.think(dt, this.warship);
+        if (r.noticed && this.#isKnown(c)) this.crew.say('Sensors', 'Enemy corvette moving to attack!', { speak: false });
+        for (const shot of r.shots) {
+          this.bolts.fire(shot.origin, shot.velocity, { look: 'hostile', hostile: true, damage: CONFIG.corvette.boltDamage, life: 6 });
+        }
+        if (r.torpedo) this.#launchTorpedo(r.torpedo);
+      }
+      c.update(dt, this.time);
+    }
+    for (const t of this.torpedoes) t.update(dt);
+    this.#updateFires(dt);
+    this.#updateWrecks(dt);
 
     for (const d of this.drones) {
       for (const shot of d.update(dt, obstacles)) {
@@ -1012,6 +1138,7 @@ export class Game {
     if (this.pilot && !this.pilot.dead) collectors.push({ position: this.pilot.position, range: this.pilot.stats.magnetRange });
     this.pickups.update(dt, collectors, this.time);
     this.effects.update(dt);
+    this.trails.update(dt, this.camera);
     for (const pop of this.popups) pop.life -= dt;
     this.popups = this.popups.filter((pop) => pop.life > 0);
     this.shake = Math.max(0, this.shake - dt * 2.5);
@@ -1024,7 +1151,76 @@ export class Game {
     const list = this.field.rocks.slice();
     if (!this.warship.dead) list.push(...this.warship.colliders);
     if (this.flagship && !this.flagship.dead) list.push(...this.flagship.colliders);
+    for (const c of this.corvettes) if (!c.dead) list.push(...c.colliders);
     return list;
+  }
+
+  #launchTorpedo({ origin, direction }) {
+    const t = new Torpedo(origin, direction, this.warship, this.colors.hostile);
+    this.scene.add(t.object);
+    this.torpedoes.push(t);
+    this.trails.attach(t, { color: this.colors.hostile.clone().multiplyScalar(0.55), width: 1.4, offset: new THREE.Vector3(0, 0, -3.5) });
+    this.#playAt('launch', origin, 0.8);
+    if (this.time - (this.alerts.torpedoAt ?? -99) > 12 && origin.distanceTo(this.warship.position) < 3500) {
+      this.alerts.torpedoAt = this.time;
+      this.crew.say('Sensors', 'Torpedo launched! Point defense, stand by.');
+    }
+  }
+
+  /** The point-defense guns fire on their own at torpedoes first, then fighters that come close. */
+  #pointDefense(dt) {
+    const w = this.warship;
+    if (this.systems.weapons < 0.1) return;
+    this.pdTimer -= dt;
+    if (this.pdTimer > 0) return;
+    const cfg = CONFIG.pointDefense;
+    this.pdTimer = 1 / (cfg.rate * this.#pf('pointDefense') * (0.4 + 0.6 * this.systems.weapons));
+    const reach = (cfg.range + 260) ** 2;
+    const threats = [];
+    for (const t of this.torpedoes) if (!t.dead && t.position.distanceToSquared(w.position) < reach) threats.push(t);
+    for (const d of this.drones) if (!d.dead && d.position.distanceToSquared(w.position) < reach) threats.push(d);
+    if (!threats.length) return;
+    let fired = false;
+    for (const m of w.model.pdMounts) {
+      const origin = w.object.localToWorld(m.position.clone());
+      const normal = m.normal.clone().transformDirection(w.object.matrixWorld);
+      let best = null;
+      let bestScore = Infinity;
+      for (const t of threats) {
+        const to = t.position.clone().sub(origin);
+        const d = to.length();
+        if (d > cfg.range || to.dot(normal) < -0.25 * d) continue;
+        const score = t.kind === 'torpedo' ? d * 0.4 : d;
+        if (score < bestScore) {
+          bestScore = score;
+          best = t;
+        }
+      }
+      if (!best) continue;
+      const dist = best.position.distanceTo(origin);
+      const dir = best.position.clone().addScaledVector(best.velocity, dist / cfg.boltSpeed).sub(origin).normalize();
+      dir.add(randomUnit(new THREE.Vector3()).multiplyScalar(cfg.spread)).normalize();
+      this.bolts.fire(origin, dir.multiplyScalar(cfg.boltSpeed).add(w.velocity), { look: 'pd', damage: 1, life: (cfg.range / cfg.boltSpeed) * 1.2 });
+      fired = true;
+      if (best.kind === 'torpedo' && this.time - (this.alerts.pdAt ?? -99) > 15) {
+        this.alerts.pdAt = this.time;
+        this.crew.say('Weapons', 'Point defense tracking the torpedo!', { speak: false });
+      }
+    }
+    if (fired && this.mode === 'bridge') this.sound.pd();
+  }
+
+  /** Fires and sparks at the flagship's knocked-out parts. */
+  #updateFires(dt) {
+    for (const b of this.burning) {
+      if (b.part.ship.dead && !this.flagshipDeath) continue;
+      b.timer -= dt;
+      if (b.timer > 0) continue;
+      b.timer = rand(0.2, 0.45);
+      const at = b.part.position.clone().add(randomUnit(new THREE.Vector3()).multiplyScalar(b.part.radius * 0.4));
+      this.effects.flash(at, this.colors.flareHot, rand(10, 22), 0.5, 1.3);
+      this.effects.sparkBurst(at, 4, this.colors.flareHot, 30);
+    }
   }
 
   #launchFighters(count) {
@@ -1191,6 +1387,10 @@ export class Game {
     if (entity.kind === 'flagship') {
       return this.#inSensorRange(entity.position) || entity.position.distanceTo(this.#viewpoint()) < VISUAL_RANGE;
     }
+    if (entity.kind === 'corvette') {
+      return this.#inSensorRange(entity.position) || entity.position.distanceTo(this.#viewpoint()) < VISUAL_RANGE * 0.7;
+    }
+    if (entity.kind === 'subsystem') return this.#isKnown(entity.ship);
     if (entity.kind === 'satellite') return entity.discovered;
     return entity.detected;
   }
@@ -1265,6 +1465,7 @@ export class Game {
 
   #salvage(sat, byScout) {
     sat.salvaged = true;
+    this.report.salvage += 1;
     this.energy = Math.min(this.shipStats.maxEnergy, this.energy + CONFIG.salvage.energy);
     this.score += CONFIG.salvage.score;
     this.sound.salvage();
@@ -1306,13 +1507,34 @@ export class Game {
             }
           }
         }
-      } else if (f && b.position.distanceToSquared(f.position) < 300 * 300) {
-        for (const c of f.colliders) {
-          if (segmentHitsSphere(b.previous, b.position, c.position, c.radius)) {
-            b.dead = true;
-            this.#damageFlagship(b.damage * (b.look === 'fighter' ? 3 : 1), b.position.clone());
-            break;
+      } else {
+        if (f && b.position.distanceToSquared(f.position) < 300 * 300) {
+          for (const c of f.colliders) {
+            if (segmentHitsSphere(b.previous, b.position, c.position, c.radius)) {
+              b.dead = true;
+              this.#damageFlagship(b.damage * (b.look === 'fighter' ? 3 : 1), b.position.clone());
+              break;
+            }
           }
+        }
+        for (const c of this.corvettes) {
+          if (b.dead) break;
+          if (c.dead || b.position.distanceToSquared(c.position) > 90 * 90) continue;
+          for (const col of c.colliders) {
+            if (segmentHitsSphere(b.previous, b.position, col.position, col.radius)) {
+              b.dead = true;
+              this.#damageCorvette(c, b.damage * (b.look === 'fighter' ? 3 : 1), b.position.clone());
+              break;
+            }
+          }
+        }
+        for (const t of this.torpedoes) {
+          if (b.dead) break;
+          if (t.dead || !segmentHitsSphere(b.previous, b.position, t.position, t.radius + (b.look === 'pd' ? 2 : 0))) continue;
+          b.dead = true;
+          t.hp -= b.look === 'battery' ? 99 : b.damage;
+          if (t.hp <= 0) this.#destroyTorpedo(t, true);
+          else this.effects.impact(b.position, this.colors.flare);
         }
       }
       if (b.dead) continue;
@@ -1357,7 +1579,32 @@ export class Game {
       }
       if (f && rock.position.distanceToSquared(f.position) < (rock.radius + 260) ** 2) {
         const c = f.hitSphere(rock.position, rock.radius * 0.9);
-        if (c) this.#shatterRock(rock, rock.position.clone().sub(c.position).normalize());
+        if (c) {
+          this.#shatterRock(rock, rock.position.clone().sub(c.position).normalize());
+          continue;
+        }
+      }
+      for (const cv of this.corvettes) {
+        if (cv.dead || rock.position.distanceToSquared(cv.position) > (rock.radius + 70) ** 2) continue;
+        const c = cv.hitSphere(rock.position, rock.radius * 0.9);
+        if (c) {
+          this.#shatterRock(rock, rock.position.clone().sub(c.position).normalize());
+          break;
+        }
+      }
+    }
+
+    for (const t of this.torpedoes) {
+      if (t.dead) continue;
+      if (!w.dead && t.position.distanceToSquared(w.position) < 300 * 300 && w.hitSphere(t.position, 3)) {
+        this.#torpedoHit(t);
+        continue;
+      }
+      for (const rock of rocks) {
+        if (!rock.dead && t.position.distanceTo(rock.position) < rock.radius + 2) {
+          this.#destroyTorpedo(t, false);
+          break;
+        }
       }
     }
 
@@ -1370,6 +1617,10 @@ export class Game {
         continue;
       }
       if (f && d.position.distanceToSquared(f.position) < 300 * 300 && f.hitSphere(d.position, 3)) {
+        this.#destroyDrone(d, false);
+        continue;
+      }
+      if (this.corvettes.some((c) => !c.dead && d.position.distanceToSquared(c.position) < 90 * 90 && c.hitSphere(d.position, 3))) {
         this.#destroyDrone(d, false);
         continue;
       }
@@ -1445,7 +1696,12 @@ export class Game {
       return !d.dead;
     });
     this.scouts = this.scouts.filter((s) => !s.dead);
-    if (this.target?.dead) this.target = null;
+    this.corvettes = this.corvettes.filter((c) => !c.dead);
+    this.torpedoes = this.torpedoes.filter((t) => {
+      if (t.dead) this.scene.remove(t.object);
+      return !t.dead;
+    });
+    if (this.target?.dead) this.target = this.target.kind === 'subsystem' && !this.target.ship.dead ? this.target.ship : null;
   }
 
   #hitRock(rock, damage, at, quiet) {
@@ -1460,7 +1716,7 @@ export class Game {
     this.field.remove(rock);
     this.#addScore(def.score, rock.position);
     const big = rock.size === 'large';
-    this.effects.explosion(rock.position, rock.radius * 1.1, { tint: DUST_TINT, debris: big ? 10 : rock.size === 'medium' ? 6 : 3, light: big });
+    this.effects.explosion(rock.position, rock.radius * 1.1, { tint: DUST_TINT, debris: big ? 10 : rock.size === 'medium' ? 6 : 3, light: big, rock: true, shockwave: false });
     this.#playAt('explode', rock.position, big ? 1 : 0.5);
     this.#shakeFrom(rock.position, big ? 1 : 0.4);
     if (def.breaksInto && damage < 900) this.#splitRock(rock, def, rock.velocity);
@@ -1471,7 +1727,7 @@ export class Game {
   #shatterRock(rock, push) {
     const def = CONFIG.asteroid[rock.size];
     this.field.remove(rock);
-    this.effects.explosion(rock.position, rock.radius * 0.9, { tint: DUST_TINT, debris: 6, light: false });
+    this.effects.explosion(rock.position, rock.radius * 0.9, { tint: DUST_TINT, debris: 6, light: false, rock: true, shockwave: false });
     this.#playAt('explode', rock.position, 0.6);
     if (def.breaksInto) this.#splitRock(rock, def, push.multiplyScalar(18).add(rock.velocity));
   }
@@ -1497,19 +1753,42 @@ export class Game {
   #destroyDrone(d, byPlayer) {
     if (d.dead) return;
     d.dead = true;
-    if (byPlayer) this.#addScore(CONFIG.drone.score, d.position);
+    if (byPlayer) {
+      this.#addScore(CONFIG.drone.score, d.position);
+      this.report.fighters += 1;
+    }
     this.effects.explosion(d.position, 16, { debris: 5 });
     this.#playAt('explode', d.position, 0.8);
     this.#shakeFrom(d.position, 0.5);
     if (byPlayer && Math.random() < CONFIG.pickups.dropChance.drone) this.#drop('energy', d);
   }
 
-  #damageFlagship(amount, at) {
+  #damageFlagship(amount, at, part = null) {
     const f = this.flagship;
     if (!f || f.dead) return;
-    f.hull -= amount;
-    if (amount > 2) this.effects.impact(at, this.colors.flareHot);
+    f.sinceHit = 0;
     if (f.state === 'dormant') f.state = 'hunting';
+    if (f.shield > 0) {
+      const absorbed = Math.min(f.shield, amount);
+      f.shield -= absorbed;
+      amount -= absorbed;
+      f.shieldHit(at);
+      if (f.shield <= 0) {
+        this.sound.alert();
+        this.crew.say('Weapons', 'Their shields are down! Hit their guns, engines or hangar, or go for the hull.');
+        this.ui.banner('Flagship shields down', 'Target its guns, engines or hangar');
+      }
+      if (amount <= 0) return;
+    }
+    if (amount > 2) this.effects.impact(at, this.colors.flareHot);
+    const hitPart = part && !part.destroyed ? part : f.parts.find((p) => !p.destroyed && p.position.distanceTo(at) < p.radius + 12);
+    if (hitPart) {
+      hitPart.hp -= amount;
+      if (hitPart.hp <= 0) this.#partDestroyed(hitPart);
+      f.hull -= amount * 0.4;
+    } else {
+      f.hull -= amount;
+    }
     if (!this.alerts.flagHalf && f.hull < f.maxHull * 0.5) {
       this.alerts.flagHalf = true;
       this.crew.say('Weapons', "The flagship's hull is buckling. Keep it up!");
@@ -1523,6 +1802,84 @@ export class Game {
       if (this.course?.entity === f) this.course = null;
       if (this.ray.target === f) this.ray.pending = 0;
     }
+  }
+
+  #partDestroyed(part) {
+    const f = this.flagship;
+    f.disable(part);
+    const at = part.position.clone();
+    this.effects.explosion(at, part.type === 'gun' ? 34 : 55, { debris: 8 });
+    this.#playAt('explode', at, 1);
+    this.#shakeFrom(at, 0.8);
+    this.burning.push({ part, timer: 0 });
+    this.report.parts += 1;
+    this.#addScore(300, at);
+    const lines = {
+      gun: 'Knocked out one of their gun batteries!',
+      engines: "Their engines are down! She's crawling.",
+      hangar: 'Their hangar is wrecked. No more fighters from her.',
+    };
+    this.crew.say('Weapons', lines[part.type]);
+    if (this.target === part) this.target = f;
+  }
+
+  #damageCorvette(c, amount, at) {
+    if (c.dead) return;
+    c.hull -= amount;
+    if (amount > 2) this.effects.impact(at, this.colors.flareHot);
+    if (c.state === 'dormant') c.state = 'attack';
+    if (c.hull > 0) return;
+    c.dead = true;
+    this.scene.remove(c.object);
+    this.effects.explosion(c.position, 70, { debris: 12 });
+    this.#playAt('explode', c.position, 1);
+    this.#shakeFrom(c.position, 1);
+    this.#addScore(CONFIG.corvette.score, c.position);
+    this.report.corvettes += 1;
+    for (let i = 0; i < 3; i++) this.#drop('energy', c);
+    this.crew.say('Weapons', 'Corvette destroyed!');
+    if (this.course?.entity === c) this.course = null;
+  }
+
+  #torpedoHit(t) {
+    t.dead = true;
+    this.effects.explosion(t.position, 38, { debris: 4 });
+    this.#playAt('explode', t.position, 1);
+    this.#damageWarship(CONFIG.torpedo.damage, t.position.clone());
+    if (this.time - (this.alerts.torpedoHitAt ?? -99) > 6) {
+      this.alerts.torpedoHitAt = this.time;
+      this.crew.say('Damage control', 'Torpedo impact!');
+    }
+  }
+
+  #destroyTorpedo(t, shotDown) {
+    t.dead = true;
+    this.effects.explosion(t.position, 16, { debris: 0, light: false });
+    this.#playAt('explode', t.position, 0.4);
+    if (!shotDown) return;
+    this.report.torpedoes += 1;
+    this.#addScore(100, t.position);
+    if (this.time - (this.alerts.torpedoDownAt ?? -99) > 10) {
+      this.alerts.torpedoDownAt = this.time;
+      this.crew.say('Weapons', 'Torpedo destroyed.', { speak: false });
+    }
+  }
+
+  #targetPart(type) {
+    const f = this.flagship;
+    if (!f || f.dead || !this.#isKnown(f)) return this.crew.say('Weapons', "We don't have the flagship on our scopes yet.");
+    if (!type) {
+      this.target = f;
+      return this.crew.say('Weapons', 'Targeting the flagship.');
+    }
+    const parts = f.parts.filter((p) => p.type === type && !p.destroyed);
+    const names = { gun: 'gun batteries', engines: 'engines', hangar: 'hangar' };
+    if (!parts.length) return this.crew.say('Weapons', `Their ${names[type]} ${type === 'hangar' ? 'is' : 'are'} already knocked out.`);
+    const w = this.warship.position;
+    parts.sort((a, b) => a.position.distanceTo(w) - b.position.distanceTo(w));
+    this.target = parts[0];
+    const note = f.shield > 0 ? ' Their shields are still up, so those come down first.' : '';
+    return this.crew.say('Weapons', `Targeting their ${type === 'gun' ? 'nearest gun battery' : names[type]}.${note}`);
   }
 
   /** Secondary explosions along the dying flagship, then one huge blast. */
@@ -1541,16 +1898,81 @@ export class Game {
       this.#shakeFrom(at, 0.6);
     }
     if (death.t <= 0) {
-      this.effects.explosion(f.position, 240, { debris: 24 });
+      this.effects.explosion(f.position, 240, { debris: 30, plane: this._v.set(0, 1, 0).applyQuaternion(f.object.quaternion) });
       this.sound.explode(1);
       this.#shakeFrom(f.position, 1.4);
-      this.scene.remove(f.object);
+      this.#breakUp(f);
       for (let i = 0; i < 6; i++) this.#drop('energy', { position: f.position.clone().add(randomUnit(new THREE.Vector3()).multiplyScalar(120)), velocity: ZERO });
       this.flagshipDeath = null;
       this.warpReady = true;
+      this.report.end = this.time;
       this.sound.sectorClear();
       this.ui.banner('Flagship destroyed', 'Warp drive ready');
       this.crew.say('Engineering', 'Warp drive is spooled up. Say the word, Captain.');
+    }
+  }
+
+  /**
+   * Splits a dead capital ship into its bow and stern sections, which tumble slowly apart with fires
+   * burning along the break. Its engines, lights and shield go dark.
+   */
+  #breakUp(ship) {
+    const m = ship.model;
+    for (const o of [...m.engines, ...m.plumes, ...m.navLights, m.shield.mesh]) o.visible = false;
+    const sections = m.sections.map((group, i) => {
+      const hull = group.children[0].geometry;
+      hull.computeBoundingBox();
+      const away = i === 0 ? -1 : 1;
+      return {
+        group,
+        pivot: new THREE.Vector3(0, 0, (hull.boundingBox.min.z + hull.boundingBox.max.z) / 2),
+        cut: new THREE.Vector3(0, 0, m.breakZ),
+        drift: new THREE.Vector3(),
+        velocity: new THREE.Vector3(rand(-1.5, 1.5), rand(-2, 2), away * rand(5, 8)),
+        euler: new THREE.Euler(),
+        spin: new THREE.Vector3(away * rand(0.012, 0.025), rand(-0.012, 0.012), rand(-0.02, 0.02)),
+        fireTimer: 0,
+      };
+    });
+    this.wrecks.push({ ship, t: 0, sections });
+  }
+
+  /** Puts a broken ship back together (a new run reuses the same warship). */
+  #mend(ship) {
+    const m = ship.model;
+    for (const g of m.sections) {
+      g.position.set(0, 0, 0);
+      g.rotation.set(0, 0, 0);
+    }
+    for (const o of [...m.engines, ...m.plumes, ...m.navLights]) o.visible = true;
+  }
+
+  #updateWrecks(dt) {
+    for (const w of this.wrecks) {
+      w.t += dt;
+      const heat = Math.max(0, 1 - w.t / 24);
+      for (const s of w.sections) {
+        s.drift.addScaledVector(s.velocity, dt);
+        s.euler.x += s.spin.x * dt;
+        s.euler.y += s.spin.y * dt;
+        s.euler.z += s.spin.z * dt;
+        // Turn about the section's own middle, not the ship's.
+        s.group.quaternion.setFromEuler(s.euler);
+        s.group.position.copy(s.pivot).sub(this._v.copy(s.pivot).applyQuaternion(s.group.quaternion)).add(s.drift);
+        if (heat <= 0 || (s.fireTimer -= dt) > 0) continue;
+        s.fireTimer = 0.1 + (1 - heat) * 0.6;
+        const at = this._v.set(rand(-26, 26), rand(-14, 14), s.cut.z);
+        s.group.updateMatrixWorld();
+        s.group.localToWorld(at);
+        this.effects.fire(at, rand(12, 30) * (0.4 + 0.6 * heat), rand(0.8, 1.4));
+        if (Math.random() < 0.35) this.effects.sparkBurst(at, 8, this.colors.flareHot, 45);
+        if (w.t < 8 && Math.random() < 0.08) {
+          const along = this._v.set(rand(-20, 20), rand(-10, 16), s.pivot.z + rand(-80, 80));
+          s.group.localToWorld(along);
+          this.effects.explosion(along, rand(25, 50), { debris: 3, light: false, shockwave: false });
+          this.#playAt('explode', along, 0.5);
+        }
+      }
     }
   }
 
@@ -1558,10 +1980,11 @@ export class Game {
     const w = this.warship;
     if (w.dead) return;
     const hadShield = w.shield > 0;
-    const hullDamage = w.takeDamage(amount);
+    const hullDamage = w.takeDamage(amount * this.#pf('damageTaken'));
     this.lastHit = this.time;
     if (hadShield) {
-      this.effects.flash(at, this.colors.ice, 24, 0.25, 1.4);
+      w.shieldHit(at);
+      this.effects.flash(at, this.colors.ice, 12, 0.2, 1);
       if (this.mode === 'bridge') this.sound.shieldHit();
       if (w.shield <= 0 && !this.alerts.shieldsDown) {
         this.alerts.shieldsDown = true;
@@ -1569,6 +1992,7 @@ export class Game {
       }
     }
     if (hullDamage > 0) {
+      this.report.hullLost += hullDamage;
       this.effects.impact(at, this.colors.flareHot);
       if (this.mode === 'bridge') {
         this.hurt = Math.min(1, this.hurt + Math.min(0.5, hullDamage / 40));
@@ -1633,7 +2057,8 @@ export class Game {
       const c = w.colliders[randInt(0, w.colliders.length - 1)];
       this.effects.explosion(c.position.clone().add(randomUnit(new THREE.Vector3()).multiplyScalar(c.radius)), rand(40, 90), { debris: 6 });
     }
-    this.effects.explosion(w.position, 220, { debris: 20 });
+    this.effects.explosion(w.position, 220, { debris: 24, plane: this._v.set(0, 1, 0).applyQuaternion(w.object.quaternion) });
+    this.#breakUp(w);
     this.sound.explode(1);
     this.sound.gameOver();
     this.hurt = 1;
@@ -1753,6 +2178,7 @@ export class Game {
       if (!this.warpSwapped) {
         this.warpSwapped = true;
         this.warpJumped = false;
+        this.lastReport = this.#closeReport();
         this.#buildSector(this.sectorIndex + 1, this.runSeed + (this.sectorIndex + 1) * 7919);
       }
       this.tunnel.intensity = Math.max(0, 1 - (t - 4) / 2);
@@ -1769,11 +2195,24 @@ export class Game {
       this.tunnel.update(0);
       this.ui.setFlash(0);
       const options = rollUpgrades(this.levels);
+      this.#updateHud();
       this.setState('upgrade');
       this.upgradeOptions = options;
-      this.ui.showUpgrades(this.sectorIndex, options, this.levels, (id) => this.chooseUpgrade(id));
+      this.ui.showUpgrades(this.sectorIndex, options, this.levels, (id) => this.chooseUpgrade(id), this.lastReport);
       if (!options.length) this.chooseUpgrade(null);
     }
+  }
+
+  /** The after-action report for the sector just cleared, with its bonus added to the score. */
+  #closeReport() {
+    const r = this.report;
+    const cfg = CONFIG.report;
+    const seconds = Math.max(0, (r.end ?? this.time) - r.start);
+    const timeBonus = Math.round(Math.max(0, cfg.parTime - seconds) * cfg.perSecond * this.sectorIndex);
+    const cleanBonus = r.hullLost <= cfg.cleanHull ? cfg.cleanBonus * this.sectorIndex : 0;
+    const bonus = timeBonus + cleanBonus;
+    this.score += bonus;
+    return { ...r, sector: this.sectorIndex, seconds, timeBonus, cleanBonus, bonus };
   }
 
   // ---------- HUD ----------
@@ -1781,7 +2220,13 @@ export class Game {
   #targetables() {
     const list = [];
     const f = this.flagship;
-    if (f && !f.dead && this.#isKnown(f)) list.push({ entity: f, hostile: true });
+    if (f && !f.dead && this.#isKnown(f)) {
+      list.push({ entity: f, hostile: true });
+      // Its weak points are listed once it's big enough on screen to pick them apart, or when targeted.
+      const near = f.position.distanceTo(this.#viewpoint()) < Math.min(3800, 2.6 * (this.hud.focal ?? 500));
+      for (const p of f.parts) if (!p.destroyed && (near || p === this.target)) list.push({ entity: p, hostile: true });
+    }
+    for (const c of this.corvettes) if (!c.dead && this.#isKnown(c)) list.push({ entity: c, hostile: true });
     for (const d of this.drones) if (!d.dead && d.detected) list.push({ entity: d, hostile: true });
     for (const s of this.satellites) if (s.discovered && !s.salvaged) list.push({ entity: s, hostile: false });
     return list;
@@ -1803,7 +2248,9 @@ export class Game {
     if (this.warpReady) return 'Engage warp to jump to the next sector';
     if (!f || f.dead) return 'The flagship is breaking up';
     if (!this.flagshipKnown) return 'Find the enemy flagship. Send out recon to search.';
-    return `Destroy the enemy flagship · ${km(f.position.distanceTo(this.warship.position))}`;
+    const dist = km(f.position.distanceTo(this.warship.position));
+    if (f.shield > 0) return `Break the flagship's shields · ${dist}`;
+    return `Destroy the flagship: hit its guns, engines or hangar · ${dist}`;
   }
 
   #commandStates() {
@@ -1834,6 +2281,14 @@ export class Game {
     };
   }
 
+  #targetNote(t) {
+    if (t.kind === 'satellite') return 'salvage';
+    const arc = this.#inRayArc(t) ? 'in ray arc' : 'outside ray arc';
+    const ship = t.kind === 'subsystem' ? t.ship : t;
+    if (ship.kind === 'flagship' && ship.shield > 0) return `shields ${Math.round((ship.shield / ship.maxShield) * 100)}% · ${arc}`;
+    return t.kind === 'fighter' ? null : arc;
+  }
+
   #updateHud() {
     const w = this.warship;
     this.ui.updateTop({
@@ -1861,13 +2316,15 @@ export class Game {
         target: t ? {
           name: t.name,
           distance: t.position.distanceTo(w.position),
-          hull: t.kind === 'flagship' ? Math.max(0, t.hull / t.maxHull) : null,
-          note: t.kind === 'flagship' ? (this.#inRayArc(t) ? 'in ray arc' : 'outside ray arc') : t.kind === 'satellite' ? 'salvage' : null,
+          hull: t.kind === 'flagship' || t.kind === 'corvette' ? Math.max(0, t.hull / t.maxHull)
+            : t.kind === 'subsystem' ? Math.max(0, t.hp / t.maxHp) : null,
+          note: this.#targetNote(t),
         } : null,
         speed: w.speed,
         throttle: w.throttle,
         course,
         commands: this.#commandStates(),
+        power: this.power,
       });
     } else if (this.pilot) {
       const p = this.pilot;
@@ -1888,6 +2345,10 @@ export class Game {
     const cam = this.camera;
     this.stars.position.copy(cam.position);
     this.sun.update(cam);
+    if (this.shadows) {
+      const flying = this.mode === 'pilot' && this.pilot && !this.pilot.dead;
+      this.sun.focusShadows(this.photo ? this._v.fromArray(this.photo.target) : flying ? cam.position : this.warship.position);
+    }
 
     // Looking toward the sun washes out the faint sky, like a real eye or camera.
     const forward = this._v.set(0, 0, -1).applyQuaternion(cam.quaternion);
@@ -1899,6 +2360,7 @@ export class Game {
     const pilot = this.mode === 'pilot' && this.pilot && !this.pilot.dead;
     const velocity = pilot ? this.pilot.velocity : this.warship.velocity;
     this.dust.update(cam.position, velocity);
+    if (!pilot) this.bridgeCrew.update(dt, this.time);
     this.interiorLight.intensity = pilot ? 0.35 : this.state === 'title' || this.state === 'gameover' ? 0 : 2;
     this.interiorLight.distance = pilot ? 4 : 24;
     this.interiorLight.position.set(0, pilot ? 0.3 : 2.6, pilot ? -0.4 : 4);
@@ -1946,15 +2408,22 @@ export class Game {
     const list = [];
     const t = this.target;
     for (const { entity, hostile } of this.#targetables()) {
+      const labels = { flagship: 'FLAGSHIP', fighter: 'FIGHTER', corvette: 'CORVETTE' };
       list.push({
         position: entity.position,
         kind: entity.kind,
-        label: entity.kind === 'flagship' ? 'FLAGSHIP' : entity.kind === 'fighter' ? 'FIGHTER' : entity.name.toUpperCase(),
+        label: labels[entity.kind] ?? entity.label ?? entity.name.toUpperCase(),
         radius: entity.kind === 'flagship' ? 220 : entity.radius,
         hostile,
         selected: entity === t,
-        hull: entity.kind === 'flagship' ? Math.max(0, entity.hull / entity.maxHull) : null,
+        hull: entity.kind === 'flagship' || entity.kind === 'corvette' ? Math.max(0, entity.hull / entity.maxHull)
+          : entity.kind === 'subsystem' ? Math.max(0, entity.hp / entity.maxHp) : null,
+        shield: entity.kind === 'flagship' && entity.maxShield ? Math.max(0, entity.shield / entity.maxShield) : null,
       });
+    }
+    const w = this.warship.position;
+    for (const tp of this.torpedoes) {
+      if (!tp.dead && tp.position.distanceTo(w) < 3500) list.push({ position: tp.position, kind: 'torpedo', label: 'TORPEDO', radius: 4, hostile: true });
     }
     for (const s of this.scouts) {
       if (!s.dead && !s.piloted) list.push({ position: s.position, kind: 'scout', label: s.name.replace('Recon ', 'R'), radius: 7, hostile: false });
@@ -1990,6 +2459,8 @@ export class Game {
       contacts.push({ kind: 'flagship', position: live ? f.position : this.flagshipLastSeen, stale: !live });
     }
     for (const d of this.drones) if (d.detected) contacts.push({ kind: 'fighter', position: d.position });
+    for (const c of this.corvettes) if (!c.dead && this.#isKnown(c)) contacts.push({ kind: 'corvette', position: c.position });
+    for (const t of this.torpedoes) if (!t.dead) contacts.push({ kind: 'torpedo', position: t.position });
     for (const s of this.satellites) if (s.discovered) contacts.push({ kind: 'satellite', position: s.position, salvaged: s.salvaged });
     for (const p of this.pickups.items) if (explored(p.position)) contacts.push({ kind: 'energy', position: p.position });
     this.map.draw({

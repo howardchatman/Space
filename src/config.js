@@ -52,20 +52,62 @@ export const CONFIG = {
 
   // Enemy capital ship.
   flagship: {
-    hull: 1600,
-    hullPerSector: 450,
+    hull: 2400,
+    hullPerSector: 500,
+    shield: 550,
+    shieldPerSector: 150,
+    shieldRegen: 12,
+    shieldDelay: 6,
+    parts: { gun: 120, engines: 320, hangar: 260 },
+    partsPerSector: 0.2,
     speed: 30,
     yawRate: 0.08,
     noticeRange: 3600,
     engageRange: 1700,
     gunRange: 2600,
-    gunInterval: [0.55, 1.1],
+    gunInterval: [0.7, 1.3],
     boltSpeed: 520,
-    boltDamage: 15,
+    boltDamage: 8,
+    boltDamagePerSector: 1.5,
     spread: 0.02,
     launchInterval: 24,
     maxFighters: 4,
     score: 2500,
+  },
+
+  // Enemy corvettes: escorts and patrols that fight at range and fire homing torpedoes.
+  corvette: {
+    hull: 300,
+    hullPerSector: 70,
+    speed: 60,
+    yawRate: 0.3,
+    noticeRange: 3000,
+    standoff: 1500,
+    gunRange: 2300,
+    gunInterval: [0.9, 1.5],
+    boltSpeed: 480,
+    boltDamage: 8,
+    torpedoRange: 2800,
+    torpedoInterval: [9, 14],
+    score: 600,
+  },
+
+  torpedo: {
+    launchSpeed: 50,
+    speed: 175,
+    accel: 45,
+    turnRate: 0.5,
+    life: 32,
+    hp: 5,
+    damage: 75,
+  },
+
+  // Your warship's automatic point-defense guns.
+  pointDefense: {
+    range: 750,
+    rate: 9, // shots per second per mount
+    boltSpeed: 1300,
+    spread: 0.014,
   },
 
   // Recon craft. They launch from the hangar, fan out ahead and reveal what's around them.
@@ -76,6 +118,14 @@ export const CONFIG = {
     hp: 40,
     scanRange: 1500,
     patrolDistance: 2300,
+  },
+
+  // Power distribution: multipliers while the reactor favours one system.
+  power: {
+    balanced: { reload: 1, damage: 1, shieldRegen: 1, speed: 1, pointDefense: 1, damageTaken: 1 },
+    weapons: { reload: 0.7, damage: 1.2, shieldRegen: 0.5, speed: 0.85, pointDefense: 1.4, damageTaken: 1 },
+    shields: { reload: 1.35, damage: 1, shieldRegen: 2.2, speed: 0.85, pointDefense: 1, damageTaken: 0.8 },
+    engines: { reload: 1.2, damage: 1, shieldRegen: 0.6, speed: 1.4, pointDefense: 0.8, damageTaken: 1 },
   },
 
   systems: {
@@ -148,4 +198,7 @@ export const CONFIG = {
   salvage: { energy: 30, score: 300, range: 380 },
 
   combo: { window: 4, killsPerStep: 3, maxMultiplier: 5 },
+
+  // After-action bonus when a sector is cleared: points for every second under par, and for a clean hull.
+  report: { parTime: 480, perSecond: 4, cleanHull: 150, cleanBonus: 800 },
 };

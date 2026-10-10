@@ -95,6 +95,8 @@ export class Sound {
   }
 
   launch() { this.#noise({ dur: 0.9, vol: 0.12, from: 400, to: 3000, type: 'bandpass', q: 1.5 }); }
+  pd() { this.#tone({ type: 'square', freq: 1600, to: 900, dur: 0.03, vol: 0.015 }); }
+  torpedo() { this.#noise({ dur: 1.1, vol: 0.1, from: 200, to: 1400, type: 'bandpass', q: 1.4 }); }
   shieldHit() { this.#tone({ type: 'sine', freq: 900, to: 300, dur: 0.18, vol: 0.06 }); }
   rotate() { this.#tone({ type: 'triangle', freq: 1400, dur: 0.04, vol: 0.06 }); }
 

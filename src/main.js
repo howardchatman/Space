@@ -74,6 +74,7 @@ if (game) {
     toggleCrewVoice: () => game.toggleCrewVoice(),
     command: (id) => game.command(id, 'button'),
     mapClick: (x, y) => game.mapClick(x, y),
+    mapMode: (mode) => game.setMapMode(mode),
   });
   ui.setMuted(sound.muted);
   ui.setCrewVoice(crew.voiceOn);

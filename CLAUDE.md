@@ -12,9 +12,13 @@ ES modules, no build step, no npm dependencies.
   (`mode` 'bridge' or 'pilot'). New orders: add to `COMMANDS`, then handle the id in `Game.command()`.
 - Units are meters and seconds. A sector is a ~7 km radius around the origin; the planet and sun are
   scenery far outside it (the sun and stars are re-centered on the camera every frame).
-- Capital ships (yours and the flagship) share `entities/capital.js` (flight, turrets, damage) and
-  `entities/shipmodel.js` (procedural model). Forward is -Z for capital ships and the scout cockpit,
-  +Z for small-craft models (`entities/drone.js`).
+- Capital ships (yours and the flagship) share `entities/capital.js` (flight, turrets, shields, damage) and
+  `entities/shipmodel.js` (procedural model). Forward is -Z for capital ships, corvettes and the scout
+  cockpit, +Z for small-craft models (`entities/drone.js`) and torpedoes. A capital ship model is two
+  sections (bow and stern groups at the ship's origin) so it can break up when destroyed; add new parts as
+  children of `object` before the end of `buildCapitalShip`, which sorts them into sections by z.
+- Hull materials come from `plating()` in `shipmodel.js`. Its options are uniforms, not shader text:
+  three.js keys programs on the `onBeforeCompile` source, so per-material GLSL would be silently shared.
 - Colors are CSS tokens on `:root` in `styles.css`; `readPalette()` in `src/main.js` hands them to the 3D
   scene, HUD and map. Add new UI colors as tokens. Physical colors (stars, planet, rock) live in shaders.
 - The scene renders in HDR: anything brighter than about 0.9 blooms. Keep glows near the camera (bolts,
@@ -24,10 +28,15 @@ ES modules, no build step, no npm dependencies.
   per sector). Don't move per-pixel noise into per-frame shaders on large surfaces.
 - Don't add or remove lights after startup, and don't put lights inside groups that get hidden: either
   changes the light count and forces every material to recompile. The interior light lives on the camera.
+  The same goes for shadows: `renderer.shadowMap` is fixed at startup (off on phones). Mark new solid
+  meshes with `useShadows()` from `fx/shadows.js`; the sun's shadow box follows the warship (or the scout
+  you fly). The bridge interior neither casts nor receives, so it never shades its own view.
 - Menus, HUD panels, command bar, map chrome and engineering are DOM (`src/ui.js`, `src/engineering.js`);
   brackets, lead pip, scanner and the death-ray arc are a 2D canvas (`src/hud.js`).
 - Verify changes in a real browser. Headless Chromium works with
   `--enable-unsafe-swiftshader --use-angle=swiftshader` (slow, about 2 fps, so advance the game by calling
   `game.update(1 / 30)` in a loop rather than waiting). Exercise recon, the map, a flagship fight, the
-  death ray, engineering, piloting a scout, warp and refit, a loss, and a phone-sized viewport with touch.
+  death ray, power orders, corvettes and torpedoes, subsystem targeting, engineering, piloting a scout, warp,
+  the after-action report and refit, a loss (the warship breaks up; a new run must mend it), and phone-sized
+  viewports with touch in both orientations.
   `game.photo = { position, target }` gives a free camera for screenshots.

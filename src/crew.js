@@ -34,6 +34,7 @@ export class Crew {
       this.synth.addEventListener?.('voiceschanged', load);
     }
     this.lastSpoken = 0;
+    this.onSay = null; // called with the station name on every report
   }
 
   get canSpeak() {
@@ -53,6 +54,7 @@ export class Crew {
   /** A report from a station. `speak: false` keeps routine chatter off the speakers. */
   say(station, text, { speak = true } = {}) {
     this.ui.addComms(station, text);
+    this.onSay?.(station);
     if (!speak || !this.voiceOn || !this.synth || typeof SpeechSynthesisUtterance === 'undefined') return;
     if (this.synth.speaking || this.synth.pending) this.synth.cancel();
     const u = new SpeechSynthesisUtterance(text);

@@ -120,7 +120,7 @@ export class Hud {
       ctx.globalAlpha = 0.95;
 
       if (!onScreen) {
-        if (!c.hostile && !c.selected) continue;
+        if ((!c.hostile || c.kind === 'subsystem') && !c.selected) continue;
         const a = Math.atan2(s.dy, s.dx);
         const x = cx + Math.cos(a) * edge;
         const y = cy + Math.sin(a) * edge;
@@ -131,6 +131,30 @@ export class Hud {
         ctx.closePath();
         ctx.fill();
         if (c.selected) ctx.fillText(c.label, x - Math.cos(a) * 18, y - Math.sin(a) * 18);
+        continue;
+      }
+
+      if (c.kind === 'torpedo') {
+        // Incoming: a small diamond that blinks, with the range so you can see it closing.
+        ctx.globalAlpha = (performance.now() % 500) < 300 ? 1 : 0.35;
+        ctx.lineWidth = 1.6;
+        this.#diamond(s.x, s.y, 6);
+        ctx.stroke();
+        ctx.globalAlpha = 0.95;
+        ctx.fillText(formatDistance(dist), s.x, s.y + 18);
+        continue;
+      }
+
+      if (c.kind === 'subsystem') {
+        // A weak point on the flagship: a small diamond, filled when it's the target.
+        ctx.lineWidth = c.selected ? 2 : 1.2;
+        ctx.globalAlpha = c.selected ? 1 : 0.75;
+        this.#diamond(s.x, s.y, c.selected ? 8 : 5);
+        ctx.stroke();
+        ctx.font = `600 10px ${p.fontMono}`;
+        if (c.selected || dist < 900) ctx.fillText(c.label, s.x, s.y - 11);
+        if (c.selected && c.hull != null) this.#bar(s.x, s.y + 13, 36, c.hull, color);
+        ctx.font = `600 11px ${p.fontMono}`;
         continue;
       }
 
@@ -156,15 +180,16 @@ export class Hud {
       }
       ctx.stroke();
       ctx.fillText(`${c.label} · ${formatDistance(dist)}`, s.x, s.y + size + 15);
-      if (c.selected) {
-        ctx.fillText('TARGET', s.x, s.y - size - 8);
-        if (c.hull != null) {
-          const w = Math.max(40, size * 1.6);
-          ctx.globalAlpha = 0.35;
-          ctx.fillRect(s.x - w / 2, s.y + size + 22, w, 3);
-          ctx.globalAlpha = 1;
-          ctx.fillRect(s.x - w / 2, s.y + size + 22, w * c.hull, 3);
+      if (c.selected) ctx.fillText('TARGET', s.x, s.y - size - 8);
+      // Hull (and shield, if it has one) under the bracket: always for the flagship, else when targeted.
+      if (c.selected || c.kind === 'flagship') {
+        const w = Math.max(40, Math.min(size * 1.6, 160));
+        let y = s.y + size + 22;
+        if (c.shield != null) {
+          this.#bar(s.x, y, w, c.shield, p.ice);
+          y += 6;
         }
+        if (c.hull != null) this.#bar(s.x, y, w, c.hull, color);
       }
     }
 
@@ -206,6 +231,27 @@ export class Hud {
   }
 
   /** The contact whose bracket is nearest a screen point, within `slop` px. */
+  #diamond(x, y, r) {
+    const { ctx } = this;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r, y);
+    ctx.closePath();
+  }
+
+  /** A thin centered meter: a faint track with the filled fraction on top. */
+  #bar(x, y, w, fraction, color) {
+    const { ctx } = this;
+    const alpha = ctx.globalAlpha;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha * 0.3;
+    ctx.fillRect(x - w / 2, y, w, 3);
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(x - w / 2, y, w * Math.max(0, Math.min(1, fraction)), 3);
+  }
+
   pick(camera, contacts, x, y, slop = 60) {
     camera.updateMatrixWorld();
     let best = null;

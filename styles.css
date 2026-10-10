@@ -128,6 +128,26 @@ button { font: inherit; color: inherit; }
 .systems [data-state="worn"] dd { color: var(--flare); }
 .systems [data-state="critical"] dd { color: var(--hostile); }
 
+.power-label { margin-top: 6px; }
+.power { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; pointer-events: auto; }
+.power button,
+.segmented button {
+  padding: 4px 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: var(--step--2);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.power button:hover,
+.segmented button:hover { border-color: var(--flare); }
+.power button[aria-pressed="true"],
+.segmented button[aria-pressed="true"] { border-color: var(--flare); background: color-mix(in srgb, var(--flare) 18%, transparent); color: var(--flare); }
+
 .target-name { font-family: var(--font-display); font-size: var(--step-0); font-weight: 600; color: var(--hostile); }
 .helm-label { margin-top: 8px; }
 
@@ -267,6 +287,10 @@ button { font: inherit; color: inherit; }
   pointer-events: none;
 }
 .map-head .btn { pointer-events: auto; padding: 10px 14px; font-size: var(--step--1); }
+.map-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.segmented { display: flex; gap: 3px; pointer-events: auto; }
+.segmented button { padding: 10px 12px; font-size: var(--step--2); }
+#map-overlay[data-mode="recon"] #map-canvas { cursor: cell; }
 .map-hint { margin: 4px 0 0; max-width: 46ch; font-size: var(--step--1); color: var(--dim); }
 .map-legend {
   position: absolute;
@@ -288,6 +312,7 @@ button { font: inherit; color: inherit; }
 .key-scout { background: var(--ice); border-radius: 50%; }
 .key-flag { background: var(--hostile); transform: rotate(45deg) scale(0.8); }
 .key-fighter { background: var(--hostile); width: 6px !important; height: 6px !important; }
+.key-corvette { border: 1.5px solid var(--hostile); transform: rotate(45deg) scale(0.75); }
 .key-sat { border: 1.5px solid var(--flare); }
 
 /* Engineering. */
@@ -743,6 +768,14 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+.report { grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 12px 0; border-block: 1px solid var(--line); }
+.report > div { align-content: end; }
+.report dd { font-size: var(--step-0); }
+.report > div:last-child dd { color: var(--energy); }
+@media (max-width: 760px) {
+  .report { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 .note { margin: 0; color: var(--flare); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -767,4 +800,11 @@ kbd {
   .sys-effect { display: none; }
   .eng-puzzle .grid { max-width: 330px; }
   .eng-head .heading { font-size: var(--step-1); }
+}
+
+/* Short landscape screens: drop the per-system readout (engineering shows it) and keep the comms log to
+   the last two reports, so the log clears the status panel and its power buttons. */
+@media (max-height: 520px) {
+  .systems { display: none; }
+  #comms li:nth-last-child(n + 3) { display: none; }
 }

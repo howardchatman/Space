@@ -56,6 +56,12 @@ export class UI {
       const rect = this.mapCanvas.getBoundingClientRect();
       actions.mapClick(e.clientX - rect.left, e.clientY - rect.top);
     });
+    for (const b of document.querySelectorAll('#map-mode button')) {
+      b.addEventListener('click', () => actions.mapMode(b.dataset.mapMode));
+    }
+    for (const b of document.querySelectorAll('#hud-power button')) {
+      b.addEventListener('click', () => actions.command(`power-${b.dataset.power}`));
+    }
     for (const button of this.commandButtons.values()) {
       button.addEventListener('click', () => actions.command(button.dataset.cmd));
     }
@@ -122,6 +128,17 @@ export class UI {
     $('btn-map').setAttribute('aria-pressed', String(open));
   }
 
+  /** 'course' or 'recon': highlights the map's click mode and explains it. */
+  setMapMode(mode) {
+    for (const b of document.querySelectorAll('#map-mode button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.mapMode === mode));
+    }
+    $('map-hint').textContent = mode === 'recon'
+      ? 'Click a point to send the nearest scout to scan it.'
+      : 'Click anywhere to set a course. Shaded space is unexplored: send recon to scan it.';
+    this.mapOverlay.dataset.mode = mode;
+  }
+
   /** Shows what the voice recognizer heard for a few seconds. */
   setHeard(text, understood) {
     const el = $('heard');
@@ -173,7 +190,10 @@ export class UI {
     this.#set('overdrive', overdrive, (v) => { $('hud-overdrive').hidden = !v; });
   }
 
-  updateBridge({ hull, maxHull, shield, maxShield, energy, maxEnergy, systems, target, speed, throttle, course, commands }) {
+  updateBridge({ hull, maxHull, shield, maxShield, energy, maxEnergy, systems, target, speed, throttle, course, commands, power }) {
+    this.#set('power', power, (v) => {
+      for (const b of document.querySelectorAll('#hud-power button')) b.setAttribute('aria-pressed', String(b.dataset.power === v));
+    });
     this.#meter('hull', hull, maxHull, 'hud-hull', 'hud-hull-bar', 'meter-hull');
     this.#meter('shield', shield, maxShield, 'hud-shield', 'hud-shield-bar', 'meter-shield');
     this.#meter('energy', energy, maxEnergy, 'hud-energy', 'hud-energy-bar', null);
@@ -221,8 +241,11 @@ export class UI {
     el.classList.add('show');
   }
 
-  showUpgrades(sector, options, levels, onPick) {
-    $('upgrade-eyebrow').textContent = `Arrived in sector ${pad2(sector)}`;
+  showUpgrades(sector, options, levels, onPick, report = null) {
+    $('upgrade-eyebrow').textContent = report
+      ? `Sector ${pad2(report.sector)} cleared · Arrived in sector ${pad2(sector)}`
+      : `Arrived in sector ${pad2(sector)}`;
+    this.#showReport(report);
     const buttons = options.map((upgrade, i) => {
       const level = levels[upgrade.id] ?? 0;
       const button = document.createElement('button');
@@ -251,6 +274,35 @@ export class UI {
     });
     $('upgrade-options').replaceChildren(...buttons);
     this.show('upgrade');
+  }
+
+  #showReport(report) {
+    const el = $('report');
+    el.hidden = !report;
+    if (!report) return;
+    const minutes = Math.floor(report.seconds / 60);
+    const seconds = String(Math.floor(report.seconds % 60)).padStart(2, '0');
+    const rows = [
+      ['Time', `${minutes}:${seconds}`],
+      ['Fighters', report.fighters],
+      ['Corvettes', report.corvettes],
+      ['Torpedoes stopped', report.torpedoes],
+      ['Hull lost', Math.round(report.hullLost)],
+      ['Bonus', `+${formatScore(report.bonus)}`],
+    ];
+    el.replaceChildren(...rows.map(([label, value]) => {
+      const div = document.createElement('div');
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = String(value);
+      div.append(dt, dd);
+      return div;
+    }));
+    el.title = [
+      report.timeBonus ? `Speed bonus +${formatScore(report.timeBonus)}` : 'No speed bonus',
+      report.cleanBonus ? `Clean hull +${formatScore(report.cleanBonus)}` : null,
+    ].filter(Boolean).join(' · ');
   }
 
   showGameOver({ score, wave, best, newBest }) {

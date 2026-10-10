@@ -14,7 +14,15 @@ export const COMMANDS = [
   { id: 'map', label: 'Map', key: 'Tab', code: 'Tab', phrases: ['tactical map', 'show the map', 'open the map', 'close the map', 'map'] },
   { id: 'full', label: 'Ahead full', key: 'W', code: null, phrases: ['ahead full', 'full ahead', 'full speed', 'all ahead'] },
   { id: 'stop', label: 'All stop', key: 'X', code: 'KeyX', phrases: ['all stop', 'full stop', 'stop the ship', 'stop'] },
-  { id: 'target', label: 'Next target', key: 'T', code: 'KeyT', phrases: ['next target', 'change target', 'target the flagship', 'lock on', 'target'] },
+  { id: 'power-weapons', label: 'Power to weapons', key: '5', code: 'Digit5', phrases: ['divert power to weapons', 'all power to weapons', 'power to weapons', 'power to the weapons', 'weapons power'] },
+  { id: 'power-shields', label: 'Power to shields', key: '6', code: 'Digit6', phrases: ['divert power to shields', 'all power to shields', 'power to shields', 'power to the shields', 'shields power', 'raise shields'] },
+  { id: 'power-engines', label: 'Power to engines', key: '7', code: 'Digit7', phrases: ['divert power to engines', 'all power to engines', 'power to engines', 'power to the engines', 'engines power'] },
+  { id: 'power-balanced', label: 'Balance power', key: '8', code: 'Digit8', phrases: ['balance power', 'balanced power', 'even out the power', 'normal power'] },
+  { id: 'target', label: 'Next target', key: 'T', code: 'KeyT', phrases: ['next target', 'change target', 'lock on', 'target'] },
+  { id: 'target-guns', label: 'Target their guns', key: null, code: null, phrases: ['target their guns', 'target the guns', 'target their weapons', 'target their batteries', 'take out their guns'] },
+  { id: 'target-engines', label: 'Target their engines', key: null, code: null, phrases: ['target their engines', 'target the engines', 'take out their engines'] },
+  { id: 'target-hangar', label: 'Target their hangar', key: null, code: null, phrases: ['target their hangar', 'target the hangar', 'take out their hangar', 'target their fighter bay'] },
+  { id: 'target-hull', label: 'Target their hull', key: null, code: null, phrases: ['target the flagship', 'target their hull', 'target the hull', 'target the ship', 'target their ship'] },
   { id: 'warp', label: 'Warp', key: 'J', code: 'KeyJ', phrases: ['engage warp', 'warp speed', 'warp drive', 'punch it', 'warp', 'jump', 'engage'] },
 ];
 

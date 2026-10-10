@@ -23,15 +23,19 @@ python3 -m http.server 8000
    derelict satellites, enemy fighter patrols and a planet on the horizon.
 2. **Search.** The enemy flagship is far away and not on your scanners. **Send out the recon**: four
    scouts launch from the hangar, fan out ahead and reveal everything near them. The tactical map shows
-   what's been explored.
+   what's been explored; switch it to **Send recon** and tap a point to send the nearest scout there.
 3. **Close in.** Pick the flagship as your target and **set course**. The helm brings the ship around and
-   keeps the bow on it. Smaller enemy fighters attack along the way; shooting them down drops energy cells.
+   keeps the bow on it. Fighters and corvettes attack along the way; shooting them down drops energy cells.
+   Corvettes fire homing torpedoes, which your point-defense guns try to shoot down on their own.
 4. **Fight.** Order the **cannons** (the deck turrets swing round and fire volleys) and the **death ray**
    (charges from the bow emitter; costs 50 energy and only fires within its arc off the bow, so the helm
-   turns the ship until it can).
+   turns the ship until it can). The flagship's **shields** soak up fire first. Once they're down, target
+   its **guns** to stop them shooting, its **engines** to slow it, or its **hangar** to stop fighters.
 5. **Keep her running.** Hits drain shields, then hull, and wear down engines, weapons, shields and sensors.
-   At the **engineering** station, route power through the conduits to repair a system.
-6. **Jump.** With the flagship destroyed, **engage warp**. You arrive in a tougher sector and pick a refit.
+   **Divert power** to weapons, shields or engines for the situation. At the **engineering** station, route
+   power through the conduits to repair a system.
+6. **Jump.** The flagship breaks in two. **Engage warp**: you get an after-action report with a bonus for
+   speed and a clean hull, pick a refit, and arrive in a tougher sector with a new sky.
 
 You can also **fly a scout** yourself at any time: hop into one, explore, shoot fighters, and press B to
 return to the bridge. The crew still takes your orders while you fly.
@@ -47,7 +51,11 @@ Every order works three ways: the buttons along the bottom of the bridge, a key,
 | Send recon | 3 | "Send out the recon" |
 | Recall recon | 4 | "Recall the scouts" |
 | Set course for the target | C | "Set course" |
-| Next target | T | "Next target", "target the flagship" |
+| Next target | T | "Next target", "lock on" |
+| Target their guns / engines / hangar | | "Target their guns", "target their engines", "target their hangar" |
+| Target the flagship itself | | "Target the flagship", "target the hull" |
+| Power to weapons / shields / engines | 5 / 6 / 7 | "Power to weapons", "divert power to shields" |
+| Balance power | 8 | "Balance power" |
 | Fly a scout / back to bridge | B | "I'll fly", "back to the ship" |
 | Engineering | G | "Engineering", "repair" |
 | Tactical map | Tab | "Show the map" |
@@ -70,6 +78,8 @@ listen; use the buttons and keys there.
 | Turn / climb | A D / R F (or arrows) | Set course from a target or the map |
 | Throttle | W / S | Ahead full / All stop |
 | Set a course anywhere | Click the tactical map | Tap the tactical map |
+| Send a scout somewhere | Map in Send recon mode, click a point | Map in Send recon mode, tap a point |
+| Divert power | 5–8, or the power buttons | The power buttons under Energy |
 | Pause | Esc or P | Pause button |
 
 ## Flying a scout
@@ -89,9 +99,15 @@ listen; use the buttons and keys there.
 - **Each sector's planet** is generated and baked into cube maps: continents, biomes, ice caps, clouds,
   ocean glint, city lights on the night side and an atmosphere that glows at the limb.
 - **The sun** is a half-degree disc with glare; looking toward it dims the faint sky.
+- **Each sector's sky** has its own nebula, baked into the background with the Milky Way.
 - **Lighting** is harsh and one-directional, as in space. The ships, the bridge and the scout cockpit are all
-  lit by the same sun, so light moves across them as you turn.
-- **The warships** have shader-drawn hull plating, working turrets, deck lights and navigation lights.
+  lit by the same sun, so light moves across them as you turn, and the sun casts shadows: turrets, masts
+  and rocks shade the decks (on desktop; phones skip shadows to save power).
+- **The warships** have shader-drawn hull plating with decks of lit windows, working turrets, engine
+  plumes, a turning radar dish, deck lights and navigation lights. Shields ripple where they're hit.
+- **Explosions** are billowing fireballs that cool into smoke, with shock rings and burning hull shards.
+  A destroyed capital ship breaks in two and the halves drift apart, burning along the break.
+- **Small craft** leave glowing engine trails; **the bridge crew** sit at their consoles and turn to report.
 - **Rendering** is HDR with bloom and a filmic tone curve.
 
 ## Project layout
@@ -109,6 +125,7 @@ src/
   engineering.js         the power-routing repair puzzle
   tactical.js            the tactical map
   bridge.js              the bridge interior around the captain
+  bridgecrew.js          the officers at the bridge consoles
   cockpit.js             the scout cockpit and muzzle flashes
   hud.js                 brackets, lead pip, scanner and death-ray arc over the 3D view
   ui.js                  HUD panels, command bar, comms, banners and menus (DOM)
@@ -117,8 +134,9 @@ src/
   audio.js               synthesized sound effects (Web Audio, no audio files)
   engine/renderer.js     WebGL renderer, bloom and tone mapping
   world/                 sector layout, sky, sun, planet, asteroids, space dust, noise
-  entities/              capital ships (model, flight, flagship AI), scouts, fighters, satellites, bolts, pickups
-  fx/                    explosions, sparks, warp tunnel, generated textures
+  entities/              capital ships (model, flight, flagship AI), corvettes, torpedoes, scouts, fighters,
+                         satellites, bolts, pickups
+  fx/                    explosions, shields, engine trails, shadows, warp tunnel, generated textures
 vendor/three/            Three.js r170 (MIT licence) and the few add-ons the game uses
 ```
 
@@ -142,7 +160,6 @@ The game is then live at `https://<user>.github.io/<repo>/`, where voice orders 
 ## Ideas for what's next
 
 - Land a scout on a planet and explore the surface
-- Crew members you can see on the bridge, at their stations
 - More puzzles in engineering (coolant, shield harmonics) and on salvage runs
-- Boss flagships with weak points, shields to knock down and escorts
+- Allied ships that join your fleet and take orders too
 - A persistent campaign: salvage buys permanent upgrades between runs

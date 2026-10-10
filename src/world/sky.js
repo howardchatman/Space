@@ -12,10 +12,11 @@ const GALACTIC_EAST = new THREE.Vector3().crossVectors(GALACTIC_NORTH, GALACTIC_
 export const STAR_DISTANCE = 150000;
 
 /**
- * Renders the diffuse Milky Way glow into a cube map once, so the expensive noise runs a single time.
- * The result is used as the scene background; individual stars are drawn live on top of it.
+ * Renders the diffuse Milky Way glow, plus this sector's nebula if given, into a cube map once per sector,
+ * so the expensive noise never runs per frame. The result is used as the scene background; individual
+ * stars are drawn live on top of it. `nebula` is { direction, inner, outer, size (radians), seed }.
  */
-export function bakeMilkyWay(renderer, size) {
+export function bakeMilkyWay(renderer, size, nebula = null) {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -23,6 +24,11 @@ export function bakeMilkyWay(renderer, size) {
       uNorth: { value: GALACTIC_NORTH },
       uCenter: { value: GALACTIC_CENTER },
       uEast: { value: GALACTIC_EAST },
+      uNebulaDir: { value: nebula?.direction ?? new THREE.Vector3(0, 1, 0) },
+      uNebulaInner: { value: nebula?.inner ?? new THREE.Color() },
+      uNebulaOuter: { value: nebula?.outer ?? new THREE.Color() },
+      uNebulaSize: { value: nebula ? nebula.size : 0 },
+      uNebulaSeed: { value: nebula?.seed ?? 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -35,6 +41,11 @@ export function bakeMilkyWay(renderer, size) {
       uniform vec3 uNorth;
       uniform vec3 uCenter;
       uniform vec3 uEast;
+      uniform vec3 uNebulaDir;
+      uniform vec3 uNebulaInner;
+      uniform vec3 uNebulaOuter;
+      uniform float uNebulaSize;
+      uniform float uNebulaSeed;
       varying vec3 vDir;
       ${GLSL_NOISE}
       void main() {
@@ -64,6 +75,22 @@ export function bakeMilkyWay(renderer, size) {
         float ha = smoothstep(0.62, 0.9, fbm(d * 5.0 + 23.0, 5) * 0.5 + 0.5) * band;
         col += vec3(0.12, 0.02, 0.035) * ha * 0.12;
         col += vec3(0.004, 0.0045, 0.007);
+
+        // The sector's nebula: billowing glow inside a soft envelope, with dark dust threaded through.
+        float away = acos(clamp(dot(d, uNebulaDir), -1.0, 1.0));
+        float envelope = uNebulaSize > 0.0 ? exp(-away * away / (uNebulaSize * uNebulaSize)) : 0.0;
+        if (envelope > 0.01) {
+          vec3 p = d * 2.4 + uNebulaSeed;
+          float body = fbm(p, 6) * 0.5 + 0.5;
+          float wisps = fbm(p * 3.1 + 7.0, 5) * 0.5 + 0.5;
+          float cloud = smoothstep(0.32, 0.9, body * (0.55 + 0.9 * envelope)) * envelope;
+          cloud *= 0.6 + 0.8 * wisps * wisps;
+          float heart = smoothstep(0.55, 1.0, envelope * body * 1.3);
+          vec3 tint = mix(uNebulaOuter, uNebulaInner, clamp(heart * 1.4 + (wisps - 0.5) * 0.6, 0.0, 1.0));
+          float dark = smoothstep(0.55, 0.8, fbm(p * 5.0 + 19.0, 5) * 0.5 + 0.5) * envelope;
+          col *= 1.0 - 0.6 * dark;
+          col += tint * cloud * (1.0 - 0.75 * dark) * 0.11;
+        }
         gl_FragColor = vec4(col, 1.0);
       }
     `,

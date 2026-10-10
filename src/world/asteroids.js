@@ -103,8 +103,9 @@ export class Asteroid {
 
 /** Owns the rock meshes: shared geometry variants, a few material tints, spawning and removal. */
 export class AsteroidField {
-  constructor(scene, { seed = 11, lowPower = false } = {}) {
+  constructor(scene, { seed = 11, lowPower = false, shadows = false } = {}) {
     this.scene = scene;
+    this.shadows = shadows;
     this.rocks = [];
     const rng = mulberry32(seed);
     const noise = createNoise3D(seed);
@@ -128,6 +129,7 @@ export class AsteroidField {
     mesh.position.copy(position);
     mesh.scale.setScalar(radius);
     mesh.quaternion.setFromAxisAngle(randomUnit(new THREE.Vector3()), rand(0, Math.PI * 2));
+    mesh.castShadow = mesh.receiveShadow = this.shadows;
     this.scene.add(mesh);
     const rock = new Asteroid(size, mesh, radius, velocity);
     this.rocks.push(rock);

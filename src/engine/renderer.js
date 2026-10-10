@@ -14,6 +14,10 @@ export class Pipeline {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.lowPower = lowPower;
+    // Sun shadows on the ships and rocks near the camera. Fixed at startup: toggling it recompiles shaders.
+    this.shadows = !lowPower;
+    this.renderer.shadowMap.enabled = this.shadows;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
 
   attach(scene, camera) {
