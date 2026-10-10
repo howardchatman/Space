@@ -1,8 +1,16 @@
+import { COMMANDS } from './commands.js';
+import { SYSTEMS } from './engineering.js';
+
 const $ = (id) => document.getElementById(id);
 const pad2 = (n) => String(n).padStart(2, '0');
 const formatScore = (n) => Math.round(n).toLocaleString('en-US');
+const formatDistance = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
 
-/** Everything drawn in HTML rather than on the canvas: HUD, banners, menus and touch buttons. */
+// Orders shown on the command bar, in order. The map has its own button up top.
+const BAR = ['cannons', 'deathray', 'recon', 'recall', 'course', 'pilot', 'engineering', 'full', 'stop', 'warp'];
+const COMMS_LINES = 4;
+
+/** Everything drawn in HTML rather than on the canvas: HUD panels, orders, comms, banners and menus. */
 export class UI {
   constructor() {
     this.screens = {
@@ -16,10 +24,17 @@ export class UI {
     this.touchHint = $('touch-hint');
     this.fireButton = $('touch-fire');
     this.boostButton = $('touch-boost');
+    this.mapOverlay = $('map-overlay');
+    this.mapCanvas = $('map-canvas');
+    this.engineeringRoot = $('engineering');
     this.touchMode = false;
     this.hudOn = false;
+    this.mode = 'bridge';
     this.hintDismissed = false;
     this.cache = {};
+    this.heardTimer = null;
+    this.#buildCommandBar();
+    this.#buildSystems();
   }
 
   bind(actions) {
@@ -32,27 +47,46 @@ export class UI {
     on('btn-quit', actions.quit);
     on('btn-over-quit', actions.quit);
     on('btn-mute', actions.toggleMute);
+    on('btn-voice', actions.toggleVoice);
+    on('btn-crew', actions.toggleCrewVoice);
+    on('btn-map', () => actions.command('map'));
+    on('btn-map-close', () => actions.command('map'));
+    on('btn-return', () => actions.command('return'));
+    this.mapCanvas.addEventListener('click', (e) => {
+      const rect = this.mapCanvas.getBoundingClientRect();
+      actions.mapClick(e.clientX - rect.left, e.clientY - rect.top);
+    });
+    for (const button of this.commandButtons.values()) {
+      button.addEventListener('click', () => actions.command(button.dataset.cmd));
+    }
   }
 
   /** Shows one menu screen by name, or none when given null. */
   show(name) {
     for (const [key, el] of Object.entries(this.screens)) el.hidden = key !== name;
     if (name) $('banner').classList.remove('show');
-    const screen = this.screens[name];
-    screen?.querySelector('[data-autofocus], .option')?.focus({ preventScroll: true });
+    this.screens[name]?.querySelector('[data-autofocus], .option')?.focus({ preventScroll: true });
   }
 
   setHudVisible(on) {
     this.hudOn = on;
     this.hud.hidden = !on;
-    this.touch.hidden = !(on && this.touchMode);
-    this.touchHint.hidden = !(on && this.touchMode && !this.hintDismissed);
+    this.#syncTouch();
+  }
+
+  /** 'bridge' or 'pilot': swaps the panels that belong to each seat. */
+  setMode(mode) {
+    this.mode = mode;
+    $('bridge-hud').hidden = mode !== 'bridge';
+    $('pilot-hud').hidden = mode !== 'pilot';
+    this.hud.dataset.mode = mode;
+    this.#syncTouch();
   }
 
   setTouchMode(on) {
     this.touchMode = on;
     document.body.classList.toggle('is-touch', on);
-    this.setHudVisible(this.hudOn);
+    this.#syncTouch();
   }
 
   dismissTouchHint() {
@@ -67,42 +101,115 @@ export class UI {
     button.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
   }
 
+  setCrewVoice(on) {
+    $('btn-crew').setAttribute('aria-pressed', String(on));
+    $('btn-crew').setAttribute('aria-label', on ? 'Crew voices on' : 'Crew voices off');
+  }
+
+  /** 'listening', 'off', 'denied' or 'unsupported'. */
+  setVoiceState(state) {
+    const button = $('btn-voice');
+    button.setAttribute('aria-pressed', String(state === 'listening'));
+    button.dataset.state = state;
+  }
+
   setBest(best) {
     $('title-best').textContent = formatScore(best);
   }
 
-  updateHud({ score, multiplier, overdrive, wave, hostiles, shield, maxShield, boost, speed, throttle }) {
-    this.#set('score', formatScore(score), (v) => { $('hud-score').textContent = v; });
-    this.#set('mult', multiplier, (v) => {
-      const el = $('hud-mult');
-      el.hidden = v <= 1;
-      el.textContent = `×${v}`;
-    });
-    this.#set('overdrive', overdrive, (v) => { $('hud-overdrive').hidden = !v; });
-    this.#set('wave', pad2(wave), (v) => { $('hud-wave').textContent = v; });
-    this.#set('hostiles', hostiles, (v) => { $('hud-hostiles').textContent = String(v); });
-    const shieldPct = Math.max(0, Math.round((shield / maxShield) * 200) / 200);
-    this.#set('shield', shieldPct, (v) => {
-      $('hud-shield').style.transform = `scaleX(${v})`;
-      $('meter-shield').classList.toggle('low', v < 0.3);
-    });
-    this.#set('shieldText', Math.max(0, Math.ceil(shield)), (v) => { $('hud-shield-value').textContent = String(v); });
-    this.#set('boost', Math.round(boost * 50) / 50, (v) => {
-      $('hud-boost').style.transform = `scaleX(${v})`;
-    });
-    this.#set('speed', Math.round(speed), (v) => { $('hud-speed').textContent = String(v); });
-    this.#set('throttle', Math.round(throttle * 100) / 100, (v) => {
-      $('hud-throttle').style.transform = `scaleX(${v})`;
-    });
+  setMapOpen(open) {
+    this.mapOverlay.hidden = !open;
+    $('btn-map').setAttribute('aria-pressed', String(open));
   }
 
-  /** Red edge glow when the shield takes a hit, 0 to 1. */
-  setHurt(amount) {
-    this.#set('hurt', Math.round(amount * 50) / 50, (v) => { $('hurt').style.opacity = String(v); });
+  /** Shows what the voice recognizer heard for a few seconds. */
+  setHeard(text, understood) {
+    const el = $('heard');
+    el.textContent = understood ? `“${text}”` : `“${text}” (not an order)`;
+    el.dataset.understood = String(understood);
+    el.hidden = false;
+    clearTimeout(this.heardTimer);
+    this.heardTimer = setTimeout(() => { el.hidden = true; }, 3000);
   }
 
   setLockHint(on) {
     this.#set('lockHint', on, (v) => { $('lock-hint').hidden = !v; });
+  }
+
+  /** Red edge glow when the ship takes a hit, 0 to 1. */
+  setHurt(amount) {
+    this.#set('hurt', Math.round(amount * 50) / 50, (v) => { $('hurt').style.opacity = String(v); });
+  }
+
+  /** White-out for the warp jump, 0 to 1. */
+  setFlash(amount) {
+    this.#set('flash', Math.round(amount * 100) / 100, (v) => { $('flash').style.opacity = String(v); });
+  }
+
+  /** Adds a crew report to the comms log. */
+  addComms(station, text) {
+    const li = document.createElement('li');
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = station;
+    li.append(who, document.createTextNode(` ${text}`));
+    const log = $('comms');
+    log.append(li);
+    while (log.children.length > COMMS_LINES) log.firstElementChild.remove();
+  }
+
+  clearComms() {
+    $('comms').replaceChildren();
+  }
+
+  updateTop({ score, sector, objective, multiplier, overdrive }) {
+    this.#set('score', formatScore(score), (v) => { $('hud-score').textContent = v; });
+    this.#set('sector', sector, (v) => { $('hud-sector').textContent = `Sector ${pad2(v)}`; });
+    this.#set('objective', objective, (v) => { $('hud-objective').textContent = v; });
+    this.#set('mult', multiplier, (v) => {
+      $('hud-mult').hidden = v <= 1;
+      $('hud-mult').textContent = `×${v}`;
+    });
+    this.#set('overdrive', overdrive, (v) => { $('hud-overdrive').hidden = !v; });
+  }
+
+  updateBridge({ hull, maxHull, shield, maxShield, energy, maxEnergy, systems, target, speed, throttle, course, commands }) {
+    this.#meter('hull', hull, maxHull, 'hud-hull', 'hud-hull-bar', 'meter-hull');
+    this.#meter('shield', shield, maxShield, 'hud-shield', 'hud-shield-bar', 'meter-shield');
+    this.#meter('energy', energy, maxEnergy, 'hud-energy', 'hud-energy-bar', null);
+    for (const sys of SYSTEMS) {
+      const pct = Math.round(systems[sys.id] * 100);
+      this.#set(`sys-${sys.id}`, pct, (v) => {
+        const row = this.systemRows[sys.id];
+        row.value.textContent = `${v}%`;
+        row.wrap.dataset.state = v >= 75 ? 'ok' : v >= 40 ? 'worn' : 'critical';
+      });
+    }
+    const targetKey = target ? `${target.name}|${Math.round(target.distance / 10)}|${Math.round((target.hull ?? -1) * 100)}` : 'none';
+    this.#set('target', targetKey, () => {
+      $('hud-target').textContent = target ? target.name : 'None';
+      $('hud-target-detail').textContent = target ? `${formatDistance(target.distance)}${target.note ? ` · ${target.note}` : ''}` : 'Tap or click a contact';
+      $('meter-target').hidden = !target || target.hull == null;
+      if (target?.hull != null) $('hud-target-bar').style.transform = `scaleX(${target.hull})`;
+    });
+    this.#set('speed', Math.round(speed), (v) => { $('hud-speed').textContent = String(v); });
+    this.#set('throttle', Math.round(Math.max(0, throttle) * 50) / 50, (v) => { $('hud-throttle').style.transform = `scaleX(${v})`; });
+    this.#set('course', course ?? '', (v) => { $('hud-course').textContent = v || 'Holding course'; });
+    for (const [id, state] of Object.entries(commands)) {
+      this.#set(`cmd-${id}`, `${state.state}|${Math.round((state.progress ?? 1) * 20)}`, () => {
+        const b = this.commandButtons.get(id);
+        if (!b) return;
+        b.dataset.state = state.state;
+        b.style.setProperty('--progress', String(state.progress ?? 1));
+      });
+    }
+  }
+
+  updatePilot({ shield, maxShield, boost, speed, throttle }) {
+    this.#meter('pshield', shield, maxShield, 'hud-pshield', 'hud-pshield-bar', 'meter-pshield');
+    this.#set('boost', Math.round(boost * 50) / 50, (v) => { $('hud-boost').style.transform = `scaleX(${v})`; });
+    this.#set('pspeed', Math.round(speed), (v) => { $('hud-pspeed').textContent = String(v); });
+    this.#set('pthrottle', Math.round(throttle * 100) / 100, (v) => { $('hud-pthrottle').style.transform = `scaleX(${v})`; });
   }
 
   banner(title, sub) {
@@ -114,8 +221,8 @@ export class UI {
     el.classList.add('show');
   }
 
-  showUpgrades(wave, options, levels, onPick) {
-    $('upgrade-eyebrow').textContent = `Sector ${pad2(wave)} clear`;
+  showUpgrades(sector, options, levels, onPick) {
+    $('upgrade-eyebrow').textContent = `Arrived in sector ${pad2(sector)}`;
     const buttons = options.map((upgrade, i) => {
       const level = levels[upgrade.id] ?? 0;
       const button = document.createElement('button');
@@ -152,6 +259,56 @@ export class UI {
     $('over-best').textContent = formatScore(best);
     $('over-note').hidden = !newBest;
     this.show('over');
+  }
+
+  #buildCommandBar() {
+    this.commandButtons = new Map();
+    const bar = $('command-bar');
+    for (const id of BAR) {
+      const c = COMMANDS.find((x) => x.id === id);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cmd';
+      b.dataset.cmd = id;
+      b.dataset.state = 'ready';
+      b.innerHTML = '<span class="cmd-key"></span><span class="cmd-label"></span><span class="cmd-cool" aria-hidden="true"></span>';
+      b.querySelector('.cmd-key').textContent = c.key;
+      b.querySelector('.cmd-label').textContent = c.label;
+      b.title = `${c.label} (${c.key}) · say “${c.phrases[0]}”`;
+      bar.append(b);
+      this.commandButtons.set(id, b);
+    }
+  }
+
+  #buildSystems() {
+    this.systemRows = {};
+    const list = $('hud-systems');
+    for (const sys of SYSTEMS) {
+      const wrap = document.createElement('div');
+      const dt = document.createElement('dt');
+      dt.textContent = sys.name;
+      const dd = document.createElement('dd');
+      dd.textContent = '100%';
+      wrap.append(dt, dd);
+      wrap.dataset.state = 'ok';
+      list.append(wrap);
+      this.systemRows[sys.id] = { wrap, value: dd };
+    }
+  }
+
+  #meter(key, value, max, valueId, barId, meterId) {
+    const pct = Math.max(0, Math.round((value / max) * 200) / 200);
+    this.#set(`${key}-v`, Math.max(0, Math.ceil(value)), (v) => { $(valueId).textContent = String(v); });
+    this.#set(`${key}-b`, pct, (v) => {
+      $(barId).style.transform = `scaleX(${v})`;
+      if (meterId) $(meterId).classList.toggle('low', v < 0.3);
+    });
+  }
+
+  #syncTouch() {
+    const pilot = this.hudOn && this.touchMode && this.mode === 'pilot';
+    this.touch.hidden = !pilot;
+    this.touchHint.hidden = !(pilot && !this.hintDismissed);
   }
 
   #set(key, value, apply) {

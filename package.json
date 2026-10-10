@@ -1,8 +1,8 @@
 {
   "name": "deep-field",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "A first-person space combat game in the browser, built with Three.js.",
+  "description": "Command a capital warship from its bridge: a first-person space game in the browser, built with Three.js.",
   "type": "module",
   "scripts": {
     "start": "npx --yes serve@14 ."

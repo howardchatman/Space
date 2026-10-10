@@ -2,6 +2,8 @@ import { Game } from './game.js';
 import { Input } from './input.js';
 import { Sound } from './audio.js';
 import { UI } from './ui.js';
+import { Crew } from './crew.js';
+import { VoiceControl } from './voice.js';
 
 /** Colors come from the CSS tokens in styles.css, so the palette lives in one place. */
 function readPalette() {
@@ -17,6 +19,9 @@ function readPalette() {
     flareHot: token('--flare-hot'),
     hostile: token('--hostile'),
     ice: token('--ice'),
+    energy: token('--energy'),
+    mapBg: token('--map-bg'),
+    mapFog: token('--map-fog'),
     fontMono: token('--font-mono'),
   };
 }
@@ -28,39 +33,58 @@ function showFailure(message) {
   document.getElementById('screen-title').hidden = true;
 }
 
+const VOICE_MESSAGES = {
+  unsupported: 'Voice orders need Chrome, Edge or Safari.',
+  denied: "Voice orders need microphone access, which this page doesn't have. Use the buttons or keys.",
+};
+
 const canvas = document.getElementById('view');
 const ui = new UI();
 const input = new Input(canvas, { fireButton: ui.fireButton, boostButton: ui.boostButton });
 const sound = new Sound();
+const crew = new Crew(ui);
 
 let game;
 try {
-  game = new Game({ canvas, hudCanvas: document.getElementById('hud-canvas'), ui, input, sound, palette: readPalette() });
+  game = new Game({ canvas, hudCanvas: document.getElementById('hud-canvas'), ui, input, sound, crew, palette: readPalette() });
 } catch (error) {
   console.error(error);
   showFailure('This browser could not start 3D graphics (WebGL 2). Try a current version of Chrome, Edge, Firefox or Safari.');
 }
 
 if (game) {
-  ui.bind({
-    start: () => {
-      game.start();
-      input.requestLock();
+  game.voice = new VoiceControl({
+    onCommand: (id) => game.command(id, 'voice'),
+    onHeard: (text, id) => ui.setHeard(text, Boolean(id)),
+    onStatus: (state) => {
+      ui.setVoiceState(state);
+      if (VOICE_MESSAGES[state]) crew.say('Comms', VOICE_MESSAGES[state], { speak: false });
+      if (state === 'listening') crew.say('Comms', "Listening for your orders, Captain. Try 'fire the cannons' or 'send out the recon'.", { speak: false });
     },
+  });
+  if (!game.voice.supported) ui.setVoiceState('unsupported');
+
+  ui.bind({
+    start: () => game.start(),
     pause: () => game.pause(),
     resume: () => game.resume(),
     quit: () => game.toTitle(),
     toggleMute: () => game.toggleMute(),
+    toggleVoice: () => game.toggleVoice(),
+    toggleCrewVoice: () => game.toggleCrewVoice(),
+    command: (id) => game.command(id, 'button'),
+    mapClick: (x, y) => game.mapClick(x, y),
   });
   ui.setMuted(sound.muted);
+  ui.setCrewVoice(crew.voiceOn);
 
   input.onTouch = () => ui.setTouchMode(true);
   input.onLockChange = (locked) => game.onLockChange(locked);
   if (window.matchMedia?.('(pointer: coarse)').matches) input.useTouch();
 
-  // Clicking the view while flying captures the mouse for steering.
+  // Clicking the view while flying a scout captures the mouse for steering.
   canvas.addEventListener('click', () => {
-    if (game.state === 'playing') input.requestLock();
+    if (game.state === 'playing' && game.mode === 'pilot') input.requestLock();
   });
 
   // Browsers only start audio after the player interacts with the page.
@@ -74,7 +98,7 @@ if (game) {
   new ResizeObserver(() => game.resize()).observe(canvas);
   game.resize();
 
-  // Handy for tinkering from the browser console, e.g. game.stats.guns = 3.
+  // Handy for tinkering from the browser console, e.g. game.energy = 100.
   window.game = game;
 
   let last = performance.now();
@@ -84,7 +108,7 @@ if (game) {
     last = now;
     game.update(dt);
     game.render(dt);
-    ui.setLockHint(game.state === 'playing' && !input.locked && !input.touchSeen);
+    ui.setLockHint(game.state === 'playing' && game.mode === 'pilot' && !input.locked && !input.touchSeen);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

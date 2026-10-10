@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Deep Field</title>
-  <meta name="description" content="A first-person space combat game in an asteroid belt above an unnamed blue world.">
+  <meta name="description" content="Command a capital warship: hunt the enemy flagship across sectors, send out recon, fly the scouts yourself and keep the ship running.">
   <meta name="theme-color" content="#05061a">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,52 +21,83 @@
 </head>
 <body>
   <main id="game">
-    <canvas id="view" aria-label="Cockpit view"></canvas>
+    <canvas id="view" aria-label="View from the bridge"></canvas>
     <canvas id="hud-canvas" aria-hidden="true"></canvas>
     <div id="hurt" aria-hidden="true"></div>
+    <div id="flash" aria-hidden="true"></div>
 
     <div id="hud" hidden>
       <div class="hud-top">
-        <div class="readout">
-          <span class="hud-label">Score</span>
-          <span id="hud-score" class="hud-value">0</span>
+        <div class="readout objective">
+          <span class="hud-label"><span id="hud-sector">Sector 01</span> · Score <span id="hud-score" class="num">0</span></span>
+          <span id="hud-objective" class="objective-text">Find the enemy flagship</span>
           <span class="chips">
             <span id="hud-mult" class="chip mult" hidden>×2</span>
             <span id="hud-overdrive" class="chip overdrive" hidden>Overdrive</span>
           </span>
         </div>
-        <div class="readout center">
-          <span class="hud-label">Sector</span>
-          <span id="hud-wave" class="hud-value">01</span>
-          <span class="hud-sub"><span id="hud-hostiles">0</span> hostiles</span>
-        </div>
         <div class="hud-actions">
-          <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+          <button id="btn-voice" class="icon-btn" type="button" aria-label="Voice orders" aria-pressed="false" title="Voice orders (V)">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" /><path class="wave" d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5M5.5 15h5" /></svg>
+          </button>
+          <button id="btn-crew" class="icon-btn" type="button" aria-label="Crew voices" aria-pressed="true" title="Crew voices">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path class="wave" d="M2.5 3.5h11v7h-6l-3 3v-3h-2z" /><path class="wave" d="M5 6.2h6M5 8.2h4" /></svg>
+          </button>
+          <button id="btn-map" class="icon-btn" type="button" aria-label="Tactical map" title="Tactical map (Tab)">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path class="wave" d="M1.5 3.5l4-1.5 5 2 4-1.5v10l-4 1.5-5-2-4 1.5zM5.5 2v10M10.5 4v10" /></svg>
+          </button>
+          <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause" title="Pause (Esc)">
             <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.5" height="12" /><rect x="9.5" y="2" width="3.5" height="12" /></svg>
           </button>
-          <button id="btn-mute" class="icon-btn" type="button" aria-label="Mute sound" aria-pressed="false">
+          <button id="btn-mute" class="icon-btn" type="button" aria-label="Mute sound" aria-pressed="false" title="Sound (M)">
             <svg class="icon-sound" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l4-3.5v11L5 10H2z" /><path class="wave" d="M11.5 5.5a3.5 3.5 0 0 1 0 5M13.5 3.5a6.3 6.3 0 0 1 0 9" /></svg>
             <svg class="icon-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l4-3.5v11L5 10H2z" /><path class="wave" d="M11 6l4 4M15 6l-4 4" /></svg>
           </button>
         </div>
       </div>
 
-      <div class="hud-bottom">
+      <div id="bridge-hud" class="hud-middle">
+        <section class="readout status-panel" aria-label="Ship status">
+          <span class="hud-label">Hull <span id="hud-hull" class="gauge-value">1000</span></span>
+          <span id="meter-hull" class="meter hull"><span id="hud-hull-bar"></span></span>
+          <span class="hud-label">Shields <span id="hud-shield" class="gauge-value">400</span></span>
+          <span id="meter-shield" class="meter"><span id="hud-shield-bar"></span></span>
+          <span class="hud-label">Energy <span id="hud-energy" class="gauge-value">100</span></span>
+          <span class="meter energy"><span id="hud-energy-bar"></span></span>
+          <dl id="hud-systems" class="systems"></dl>
+        </section>
+        <section class="readout target-panel" aria-label="Target and helm">
+          <span class="hud-label">Target</span>
+          <span id="hud-target" class="target-name">None</span>
+          <span id="hud-target-detail" class="hud-sub">Tap or click a contact</span>
+          <span id="meter-target" class="meter thin" hidden><span id="hud-target-bar"></span></span>
+          <span class="hud-label helm-label">Helm <span class="gauge-value"><span id="hud-speed" class="num">0</span> m/s</span></span>
+          <span class="meter throttle"><span id="hud-throttle"></span></span>
+          <span id="hud-course" class="hud-sub">Holding course</span>
+        </section>
+      </div>
+
+      <div id="pilot-hud" class="hud-bottom" hidden>
         <div class="readout gauges">
-          <span class="hud-label">Shield <span id="hud-shield-value" class="gauge-value">100</span></span>
-          <span id="meter-shield" class="meter"><span id="hud-shield"></span></span>
+          <span class="hud-label">Scout shield <span id="hud-pshield" class="gauge-value">100</span></span>
+          <span id="meter-pshield" class="meter"><span id="hud-pshield-bar"></span></span>
           <span class="hud-label">Boost</span>
           <span class="meter boost"><span id="hud-boost"></span></span>
         </div>
+        <button id="btn-return" class="btn return-btn" type="button">Back to bridge <kbd>B</kbd></button>
         <div class="readout gauges right">
-          <span class="hud-label">Speed <span class="gauge-value"><span id="hud-speed">0</span> m/s</span></span>
-          <span class="meter throttle"><span id="hud-throttle"></span></span>
+          <span class="hud-label">Speed <span class="gauge-value"><span id="hud-pspeed">0</span> m/s</span></span>
+          <span class="meter throttle"><span id="hud-pthrottle"></span></span>
           <span class="hud-label">Throttle</span>
         </div>
       </div>
+
+      <ol id="comms" aria-live="polite" aria-label="Crew reports"></ol>
+      <nav id="command-bar" aria-label="Orders"></nav>
     </div>
 
     <p id="lock-hint" hidden>Click the view to steer with the mouse · Esc to release</p>
+    <p id="heard" hidden></p>
 
     <div id="banner" aria-live="polite">
       <span id="banner-title" class="banner-title"></span>
@@ -79,35 +110,78 @@
       <button id="touch-fire" class="touch-btn fire" type="button">Fire</button>
     </div>
 
+    <section id="map-overlay" aria-label="Tactical map" hidden>
+      <canvas id="map-canvas"></canvas>
+      <header class="map-head">
+        <div>
+          <p class="eyebrow">Tactical map</p>
+          <p class="map-hint">Click anywhere to set a course. Shaded space is unexplored: send recon to scan it.</p>
+        </div>
+        <button id="btn-map-close" class="btn" type="button">Close <kbd>Tab</kbd></button>
+      </header>
+      <ul class="map-legend">
+        <li><span class="key-ship"></span>Your warship</li>
+        <li><span class="key-scout"></span>Recon</li>
+        <li><span class="key-flag"></span>Enemy flagship</li>
+        <li><span class="key-fighter"></span>Fighters</li>
+        <li><span class="key-sat"></span>Derelict (salvage)</li>
+      </ul>
+    </section>
+
+    <section id="engineering" class="screen overlay" aria-labelledby="eng-heading" hidden>
+      <div class="panel eng-panel">
+        <div class="eng-head">
+          <div>
+            <p class="eyebrow">Engineering</p>
+            <h2 id="eng-heading" class="heading">Route power</h2>
+          </div>
+          <button class="btn" type="button" data-close>Close <kbd>G</kbd></button>
+        </div>
+        <div class="eng-body">
+          <div class="system-list" data-systems></div>
+          <div class="eng-puzzle">
+            <div class="puzzle-frame">
+              <div class="ports" data-source></div>
+              <div class="grid" data-grid></div>
+              <div class="ports" data-sink></div>
+            </div>
+            <p class="eng-status" data-status></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="screen-title" class="screen title" aria-labelledby="title-logo">
       <div class="panel title-panel">
-        <p class="eyebrow">Interceptor DF-7 · High orbit debris belt</p>
+        <p class="eyebrow">Capital warship DF-1 · Fleet command</p>
         <h1 id="title-logo" class="logo"><span>Deep</span> <span class="logo-outline">Field</span></h1>
-        <p class="lede">Hold the debris belt above an unnamed blue world. Hunt the drones that drop out of warp, break rock for supplies, and refit your interceptor between sectors.</p>
+        <p class="lede">You command a warship from its bridge. Find the enemy flagship hiding in each sector, order your crew to fire, send out recon, fly a scout yourself, and keep the ship running. Destroy the flagship to jump to the next sector.</p>
         <div class="actions">
-          <button id="btn-start" class="btn primary" type="button" data-autofocus>Launch</button>
+          <button id="btn-start" class="btn primary" type="button" data-autofocus>Take command</button>
           <p class="best">Best <span id="title-best">0</span></p>
         </div>
         <dl class="controls keyboard-only">
-          <div><dt><kbd>Mouse</kbd></dt><dd>Steer</dd></div>
-          <div><dt><kbd>Click</kbd><kbd>Space</kbd></dt><dd>Fire</dd></div>
+          <div><dt><kbd>Drag</kbd></dt><dd>Look around</dd></div>
+          <div><dt><kbd>Click</kbd></dt><dd>Pick target</dd></div>
           <div><dt><kbd>W</kbd><kbd>S</kbd></dt><dd>Throttle</dd></div>
-          <div><dt><kbd>A</kbd><kbd>D</kbd></dt><dd>Strafe</dd></div>
-          <div><dt><kbd>Q</kbd><kbd>E</kbd></dt><dd>Roll</dd></div>
-          <div><dt><kbd>Shift</kbd></dt><dd>Boost</dd></div>
-          <div><dt><kbd>Esc</kbd></dt><dd>Pause</dd></div>
-          <div><dt><kbd>M</kbd></dt><dd>Sound</dd></div>
+          <div><dt><kbd>A</kbd><kbd>D</kbd></dt><dd>Turn</dd></div>
+          <div><dt><kbd>1</kbd><kbd>2</kbd></dt><dd>Cannons, ray</dd></div>
+          <div><dt><kbd>3</kbd><kbd>4</kbd></dt><dd>Recon, recall</dd></div>
+          <div><dt><kbd>Tab</kbd></dt><dd>Map</dd></div>
+          <div><dt><kbd>V</kbd></dt><dd>Voice orders</dd></div>
         </dl>
         <dl class="controls touch-only">
-          <div><dt>Left thumb</dt><dd>Drag to steer</dd></div>
-          <div><dt>Right thumb</dt><dd>Hold Fire, tap Boost</dd></div>
+          <div><dt>Drag</dt><dd>Look around</dd></div>
+          <div><dt>Tap</dt><dd>Pick a target</dd></div>
+          <div><dt>Orders</dt><dd>Buttons along the bottom</dd></div>
+          <div><dt>Map</dt><dd>Tap a point to set course</dd></div>
         </dl>
       </div>
     </section>
 
     <section id="screen-upgrade" class="screen" aria-labelledby="upgrade-heading" hidden>
       <div class="panel wide">
-        <p id="upgrade-eyebrow" class="eyebrow">Sector 01 clear</p>
+        <p id="upgrade-eyebrow" class="eyebrow">Arrived in sector 02</p>
         <h2 id="upgrade-heading" class="heading">Choose a refit</h2>
         <div id="upgrade-options" class="options"></div>
         <p class="hint keyboard-only">Press 1, 2 or 3</p>
@@ -128,7 +202,7 @@
     <section id="screen-over" class="screen" aria-labelledby="over-heading" hidden>
       <div class="panel narrow">
         <p class="eyebrow">Signal lost</p>
-        <h2 id="over-heading" class="heading">Ship destroyed</h2>
+        <h2 id="over-heading" class="heading">Warship destroyed</h2>
         <dl class="stats">
           <div><dt>Score</dt><dd id="over-score">0</dd></div>
           <div><dt>Sector</dt><dd id="over-wave">01</dd></div>
@@ -136,7 +210,7 @@
         </dl>
         <p id="over-note" class="note" hidden>New best score</p>
         <div class="actions">
-          <button id="btn-again" class="btn primary" type="button" data-autofocus>Fly again</button>
+          <button id="btn-again" class="btn primary" type="button" data-autofocus>New command</button>
           <button id="btn-over-quit" class="btn" type="button">Title</button>
         </div>
       </div>

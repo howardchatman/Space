@@ -3,50 +3,52 @@ import { glowTexture } from '../fx/textures.js';
 
 const Z = new THREE.Vector3(0, 0, 1);
 
-/** Laser bolts for both sides, drawn as glowing rods from a reusable pool. */
+/**
+ * Laser bolts for every weapon in the game, drawn as glowing rods with a bright head from reusable pools.
+ * `looks` maps a weapon name to { radius, length, color, glow } (glow: head sprite size in meters).
+ * Bolts grow from the muzzle to full length, so near-camera shots read as streaks.
+ */
 export class Bolts {
-  constructor(scene, { friendly, hostile }) {
+  constructor(scene, looks) {
     this.scene = scene;
     this.active = [];
-    this.pool = { friendly: [], hostile: [] };
-    const make = (radius, length, color, glowSize) => {
-      const geometry = new THREE.CylinderGeometry(radius, radius, length, 8);
+    this.pool = {};
+    this.looks = {};
+    for (const [name, look] of Object.entries(looks)) {
+      const geometry = new THREE.CylinderGeometry(look.radius, look.radius, look.length, 8);
       geometry.rotateX(Math.PI / 2);
-      geometry.translate(0, 0, -length / 2); // the head leads, the tail trails behind
-      return {
+      geometry.translate(0, 0, -look.length / 2); // the head leads, the tail trails behind
+      this.looks[name] = {
         geometry,
-        length,
-        glowSize,
+        length: look.length,
+        glowSize: look.glow,
         material: new THREE.MeshBasicMaterial({
-          color,
+          color: look.color,
           transparent: true,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
         }),
         glow: new THREE.SpriteMaterial({
           map: glowTexture(),
-          color: color.clone().multiplyScalar(0.35),
+          color: look.color.clone().multiplyScalar(0.35),
           blending: THREE.AdditiveBlending,
           depthWrite: false,
           transparent: true,
         }),
       };
-    };
-    this.looks = {
-      friendly: make(0.07, 28, friendly, 2.2),
-      hostile: make(0.3, 14, hostile, 6),
-    };
+      this.pool[name] = [];
+    }
   }
 
-  fire(origin, velocity, { hostile = false, damage, life }) {
-    const side = hostile ? 'hostile' : 'friendly';
-    let mesh = this.pool[side].pop();
+  /** Fires a bolt. `hostile` bolts hurt you; the rest hurt the enemy. */
+  fire(origin, velocity, { look, hostile = false, damage, life }) {
+    const style = this.looks[look];
+    let mesh = this.pool[look].pop();
     if (!mesh) {
-      const look = this.looks[side];
-      mesh = new THREE.Mesh(look.geometry, look.material);
+      mesh = new THREE.Mesh(style.geometry, style.material);
       mesh.frustumCulled = false;
-      const glow = new THREE.Sprite(look.glow);
-      glow.scale.setScalar(look.glowSize);
+      const glow = new THREE.Sprite(style.glow);
+      glow.scale.setScalar(style.glowSize);
       mesh.add(glow);
     }
     mesh.position.copy(origin);
@@ -55,13 +57,13 @@ export class Bolts {
     this.scene.add(mesh);
     const bolt = {
       mesh,
-      side,
+      look,
       hostile,
       position: mesh.position,
       previous: origin.clone(),
       velocity: velocity.clone(),
       speed: velocity.length(),
-      length: this.looks[side].length,
+      length: style.length,
       traveled: 0,
       damage,
       life,
@@ -75,7 +77,6 @@ export class Bolts {
     for (const b of this.active) {
       b.previous.copy(b.position);
       b.position.addScaledVector(b.velocity, dt);
-      // The streak stretches out behind the head until it reaches full length.
       b.traveled += b.speed * dt;
       b.mesh.scale.z = Math.max(0.02, Math.min(1, b.traveled / b.length));
       b.life -= dt;
@@ -83,13 +84,13 @@ export class Bolts {
     }
   }
 
-  /** Returns dead bolts to the pool. */
+  /** Returns dead bolts to their pools. */
   sweep() {
     const live = [];
     for (const b of this.active) {
       if (b.dead) {
         this.scene.remove(b.mesh);
-        this.pool[b.side].push(b.mesh);
+        this.pool[b.look].push(b.mesh);
       } else {
         live.push(b);
       }
@@ -104,7 +105,7 @@ export class Bolts {
 }
 
 /**
- * Whether a bolt's path this frame (previous → position) passed within `radius` of `center`.
+ * Whether a bolt's path this frame (from → to) passed within `radius` of `center`.
  * Testing the whole segment stops fast bolts from skipping through small targets.
  */
 export function segmentHitsSphere(from, to, center, radius) {

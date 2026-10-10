@@ -134,17 +134,14 @@ export class AsteroidField {
     return rock;
   }
 
-  /** Scatters large rocks through the belt until it holds `count`, keeping clear of `avoid`. */
-  populate(count, avoid, minDistance) {
-    const { radius, flatten } = CONFIG.field;
+  /** Scatters a cluster of rocks around `center`, mostly large, within `radius`. */
+  populateCluster(center, radius, count, rng = Math.random) {
     const p = new THREE.Vector3();
-    let guard = 0;
-    while (this.rocks.length < count && guard++ < count * 40) {
-      randomUnit(p).multiplyScalar(radius * Math.cbrt(Math.random()));
-      p.y *= flatten;
-      if (avoid && p.distanceTo(avoid) < minDistance) continue;
-      const size = Math.random() < 0.75 ? 'large' : 'medium';
-      this.spawn(size, p);
+    for (let i = 0; i < count; i++) {
+      randomUnit(p, rng).multiplyScalar(radius * Math.cbrt(rng()));
+      p.y *= 0.5;
+      const roll = rng();
+      this.spawn(roll < 0.55 ? 'large' : roll < 0.85 ? 'medium' : 'small', p.add(center));
     }
   }
 

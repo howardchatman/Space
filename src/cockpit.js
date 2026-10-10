@@ -141,10 +141,7 @@ export function buildCockpit({ flare, ice }) {
     dash.add(lamp);
   }
 
-  // A dim interior light so the frame isn't pitch black when the sun is behind you.
-  const interior = new THREE.PointLight(0xffd6a8, 0.35, 4, 2);
-  interior.position.set(0, 0.3, -0.4);
-  group.add(interior);
+  // The interior light lives on the camera (see Game), so hiding the cockpit doesn't change the light count.
 
   return group;
 }

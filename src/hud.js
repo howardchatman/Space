@@ -71,6 +71,157 @@ export class Hud {
     if (view.boundary) this.#boundary(camera);
   }
 
+  /**
+   * The captain's overlay on the bridge: labelled brackets on every known contact, a lock box on the
+   * selected target, off-screen arrows, the helm's course marker and the death ray's firing arc.
+   */
+  drawBridge(view) {
+    this.clear();
+    const { ctx, p } = this;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const { camera } = view;
+    camera.updateMatrixWorld();
+    this.focal = this.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    const edge = Math.min(this.width, this.height) * 0.42;
+
+    // Where the death ray can reach: a cone around the bow.
+    if (view.rayArc) {
+      const center = this.project(camera, view.rayArc.center);
+      if (center.front) {
+        const r = this.focal * Math.tan(view.rayArc.angle);
+        ctx.strokeStyle = p.ice;
+        ctx.globalAlpha = view.rayArc.ready ? 0.5 : 0.2;
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 7]);
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, r, 0, TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = `600 10px ${p.fontMono}`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = p.ice;
+        ctx.fillText('DEATH RAY ARC', center.x, center.y - r - 6);
+      }
+    }
+
+    ctx.font = `600 11px ${p.fontMono}`;
+    ctx.textAlign = 'center';
+    for (const c of view.contacts) {
+      const s = this.project(camera, c.position);
+      const dist = c.position.distanceTo(camera.position);
+      const color = c.hostile ? p.hostile : c.kind === 'scout' ? p.ice : c.kind === 'satellite' ? p.flare : p.dim;
+      const onScreen = s.front && s.x > 0 && s.x < this.width && s.y > 0 && s.y < this.height;
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.95;
+
+      if (!onScreen) {
+        if (!c.hostile && !c.selected) continue;
+        const a = Math.atan2(s.dy, s.dx);
+        const x = cx + Math.cos(a) * edge;
+        const y = cy + Math.sin(a) * edge;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * 11, y + Math.sin(a) * 11);
+        ctx.lineTo(x + Math.cos(a + 2.5) * 8, y + Math.sin(a + 2.5) * 8);
+        ctx.lineTo(x + Math.cos(a - 2.5) * 8, y + Math.sin(a - 2.5) * 8);
+        ctx.closePath();
+        ctx.fill();
+        if (c.selected) ctx.fillText(c.label, x - Math.cos(a) * 18, y - Math.sin(a) * 18);
+        continue;
+      }
+
+      if (c.kind === 'scout') {
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 6, 0, TAU);
+        ctx.stroke();
+        ctx.fillText(c.label, s.x, s.y + 20);
+        continue;
+      }
+
+      const size = Math.max(12, ((c.radius * this.focal) / Math.max(dist, 1)) * 1.15);
+      const k = size * 0.4;
+      ctx.lineWidth = c.selected ? 2.2 : 1.4;
+      ctx.beginPath();
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const x = s.x + sx * size;
+        const y = s.y + sy * size;
+        ctx.moveTo(x - sx * k, y);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x, y - sy * k);
+      }
+      ctx.stroke();
+      ctx.fillText(`${c.label} · ${formatDistance(dist)}`, s.x, s.y + size + 15);
+      if (c.selected) {
+        ctx.fillText('TARGET', s.x, s.y - size - 8);
+        if (c.hull != null) {
+          const w = Math.max(40, size * 1.6);
+          ctx.globalAlpha = 0.35;
+          ctx.fillRect(s.x - w / 2, s.y + size + 22, w, 3);
+          ctx.globalAlpha = 1;
+          ctx.fillRect(s.x - w / 2, s.y + size + 22, w * c.hull, 3);
+        }
+      }
+    }
+
+    if (view.waypoint) {
+      const s = this.project(camera, view.waypoint);
+      if (s.front) {
+        ctx.strokeStyle = p.flare;
+        ctx.fillStyle = p.flare;
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y - 9);
+        ctx.lineTo(s.x + 9, s.y);
+        ctx.lineTo(s.x, s.y + 9);
+        ctx.lineTo(s.x - 9, s.y);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.fillText(`COURSE · ${formatDistance(view.waypoint.distanceTo(camera.position))}`, s.x, s.y + 24);
+      }
+    }
+
+    // A quiet center mark: where a click picks a target.
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = p.hull;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 10, cy);
+    ctx.lineTo(cx - 4, cy);
+    ctx.moveTo(cx + 4, cy);
+    ctx.lineTo(cx + 10, cy);
+    ctx.moveTo(cx, cy - 10);
+    ctx.lineTo(cx, cy - 4);
+    ctx.moveTo(cx, cy + 4);
+    ctx.lineTo(cx, cy + 10);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    this.#damage(camera, view.ship, view.damage);
+  }
+
+  /** The contact whose bracket is nearest a screen point, within `slop` px. */
+  pick(camera, contacts, x, y, slop = 60) {
+    camera.updateMatrixWorld();
+    let best = null;
+    let bestD = slop;
+    for (const c of contacts) {
+      const s = this.project(camera, c.position);
+      if (!s.front) continue;
+      const d = Math.hypot(s.x - x, s.y - y);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
   #crosshair(hitMarker, target) {
     const { ctx, p } = this;
     const cx = this.width / 2;

@@ -96,6 +96,11 @@ export class Effects {
     if (light) this.#flash(position, size);
   }
 
+  /** A brief glow, e.g. a muzzle flash or a shield ripple. */
+  flash(position, color, size, life = 0.12, intensity = 3) {
+    this.#sprite(glowTexture(), position, { size, grow: 0.6, life, color, intensity });
+  }
+
   /** Small burst where a bolt strikes something. */
   impact(position, color) {
     this.#sprite(glowTexture(), position, { size: 7, grow: 1.5, life: 0.12, color, intensity: 4 });

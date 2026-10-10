@@ -1,8 +1,8 @@
 # Deep Field
 
-A first-person space combat game that runs in the browser. You fly an interceptor from the cockpit
-through an asteroid belt above an unnamed blue world, hunting drones that drop out of warp, and refit
-your ship between sectors.
+A first-person space game in the browser. You command a capital warship from its bridge: find the enemy
+flagship hiding somewhere in each sector, order your crew to fire, send out recon, fly a scout yourself,
+and keep the ship running. Destroy the flagship, then jump to warp to reach the next sector.
 
 Built with [Three.js](https://threejs.org) (WebGL). There is no build step: plain JavaScript modules,
 with Three.js vendored in `vendor/` so the game runs offline.
@@ -17,97 +17,132 @@ npm start            # serves the folder on http://localhost:3000
 python3 -m http.server 8000
 ```
 
-Click **Launch**. The game captures your mouse so you can steer; press Esc to release it and pause.
+## How a sector plays
 
-## Controls
+1. **Arrive.** The warship drops out of warp at the edge of a 14 km sector of asteroid clusters,
+   derelict satellites, enemy fighter patrols and a planet on the horizon.
+2. **Search.** The enemy flagship is far away and not on your scanners. **Send out the recon**: four
+   scouts launch from the hangar, fan out ahead and reveal everything near them. The tactical map shows
+   what's been explored.
+3. **Close in.** Pick the flagship as your target and **set course**. The helm brings the ship around and
+   keeps the bow on it. Smaller enemy fighters attack along the way; shooting them down drops energy cells.
+4. **Fight.** Order the **cannons** (the deck turrets swing round and fire volleys) and the **death ray**
+   (charges from the bow emitter; costs 50 energy and only fires within its arc off the bow, so the helm
+   turns the ship until it can).
+5. **Keep her running.** Hits drain shields, then hull, and wear down engines, weapons, shields and sensors.
+   At the **engineering** station, route power through the conduits to repair a system.
+6. **Jump.** With the flagship destroyed, **engage warp**. You arrive in a tougher sector and pick a refit.
+
+You can also **fly a scout** yourself at any time: hop into one, explore, shoot fighters, and press B to
+return to the bridge. The crew still takes your orders while you fly.
+
+## Orders
+
+Every order works three ways: the buttons along the bottom of the bridge, a key, or your voice.
+
+| Order | Key | Say |
+| --- | --- | --- |
+| Fire cannons | 1 | "Fire the cannons", "open fire" |
+| Death ray | 2 | "Fire the death ray" |
+| Send recon | 3 | "Send out the recon" |
+| Recall recon | 4 | "Recall the scouts" |
+| Set course for the target | C | "Set course" |
+| Next target | T | "Next target", "target the flagship" |
+| Fly a scout / back to bridge | B | "I'll fly", "back to the ship" |
+| Engineering | G | "Engineering", "repair" |
+| Tactical map | Tab | "Show the map" |
+| Ahead full / all stop | W / X | "Ahead full", "all stop" |
+| Warp | J | "Engage warp" |
+
+The crew answers in the comms log and out loud (turn crew voices off with the speech-bubble button).
+
+**Voice orders** use the browser's speech recognition: press V or the microphone button and allow the
+microphone. They work in Chrome, Edge and Safari when the game runs from its own address (locally or on
+GitHub Pages). Pages embedded without microphone access, such as a claude.ai artifact preview, can't
+listen; use the buttons and keys there.
+
+## On the bridge
 
 | Action | Mouse and keyboard | Touch |
 | --- | --- | --- |
-| Steer (pitch and yaw) | Move the mouse, or the arrow keys | Drag on the left half of the screen |
-| Fire | Left click or Space | Hold **Fire**, or touch anywhere on the right half |
-| Throttle up / down | W / S | Fixed cruise speed |
-| Strafe left / right | A / D | |
-| Strafe up / down | R / F | |
-| Roll | Q / E | |
-| Boost (short dodge) | Shift or right click | Tap **Boost** |
+| Look around | Drag the view | Drag the view |
+| Pick a target | Click its bracket | Tap its bracket |
+| Turn / climb | A D / R F (or arrows) | Set course from a target or the map |
+| Throttle | W / S | Ahead full / All stop |
+| Set a course anywhere | Click the tactical map | Tap the tactical map |
 | Pause | Esc or P | Pause button |
-| Sound on/off | M | Speaker button |
 
-If your browser won't let the game capture the mouse, it falls back to cursor steering: the farther the
-cursor is from the center, the faster you turn.
+## Flying a scout
 
-## How a run works
-
-- **Sectors.** Each sector sends a wave of drones. They warp in, make attack runs, fire short bursts, then
-  break off and come around again. Destroy them all to clear the sector.
-- **The HUD.** Red brackets mark hostiles with their range. The orange diamond is the lead pip: aim there
-  and your bolts meet the target. The blue circle with wings shows where you're actually drifting.
-  The scanner at the bottom shows contacts around you; stalks show whether they're above or below.
-- **Asteroids.** Large rocks break into medium ones, and medium into small. Rocks block everyone's fire,
-  so use them as cover. Hitting one at speed damages your shield.
-- **Shield.** Hits drain it. At zero, the run ends.
-- **Combo.** Kills within about 3 seconds of each other build a multiplier, up to ×5. Taking a hit resets it.
-- **Supplies.** Destroyed drones and broken rock sometimes drop crystals: blue restores shield, orange
-  (overdrive) doubles your fire rate for 6 seconds.
-- **Refits.** Clearing a sector gives a score bonus and a choice of three upgrades, such as linked cannons,
-  faster fire, stronger shields or better thrusters.
-
-Your best score is saved in the browser.
+| Action | Mouse and keyboard | Touch |
+| --- | --- | --- |
+| Steer | Mouse (click the view to capture it) or arrows | Drag on the left half |
+| Fire | Left click or Space | Hold Fire |
+| Throttle / strafe / roll | W S / A D R F / Q E | Fixed cruise speed |
+| Boost | Shift | Tap Boost |
+| Back to the bridge | B | Back to bridge button |
 
 ## What makes it look real
 
-- **Stars** follow a real brightness distribution (many faint, few bright), crowd toward the Milky Way,
-  and are colored by temperature, from orange K stars to blue-white B stars.
-- **The Milky Way** is a procedural band with a brighter core and dark dust lanes, baked once into a cube map.
-- **The planet** is generated with noise and baked into cube maps: continents, biomes, ice caps and clouds.
-  It's lit live, with ocean sun glint, cloud shadows, city lights on the night side, and an atmosphere that
-  glows blue at the limb and orange at the terminator.
-- **The sun** is a half-degree disc with glare. Looking toward it dims the faint sky, like a real eye or camera.
-- **Lighting** is harsh and one-directional, as in space: no air to soften shadows, just faint blue light
-  reflected off the planet. The cockpit frame is lit by the same sun, so it changes as you turn.
+- **Stars** follow a real brightness distribution, crowd toward the Milky Way and are colored by temperature.
+- **The Milky Way** is a procedural band with a bright core and dark dust lanes.
+- **Each sector's planet** is generated and baked into cube maps: continents, biomes, ice caps, clouds,
+  ocean glint, city lights on the night side and an atmosphere that glows at the limb.
+- **The sun** is a half-degree disc with glare; looking toward it dims the faint sky.
+- **Lighting** is harsh and one-directional, as in space. The ships, the bridge and the scout cockpit are all
+  lit by the same sun, so light moves across them as you turn.
+- **The warships** have shader-drawn hull plating, working turrets, deck lights and navigation lights.
 - **Rendering** is HDR with bloom and a filmic tone curve.
 
 ## Project layout
 
 ```
-index.html              page markup: 3D view, HUD readouts and menu screens
-styles.css              all styling; color tokens here are also used by the 3D scene and HUD
+index.html               page markup: 3D view, HUD panels, command bar, map, engineering, menus
+styles.css               all styling; color tokens here are also used by the 3D scene, HUD and map
 src/
-  main.js               boots the game and runs the frame loop
-  config.js             every gameplay number (speeds, damage, scores, timings)
-  game.js               scene setup, sector flow, combat, collisions, camera
-  input.js              mouse (pointer lock), keyboard and touch controls
-  hud.js                crosshair, target brackets, lead pip, scanner (2D canvas over the 3D view)
-  cockpit.js            cockpit frame, dashboard and muzzle flashes
-  ui.js                 HUD readouts, banners and menus (DOM)
-  audio.js              synthesized sound effects (Web Audio, no audio files)
-  upgrades.js           the refit list
-  engine/renderer.js    WebGL renderer, bloom and tone mapping
-  world/                sky (stars, Milky Way), sun, planet, asteroids, space dust, noise
-  entities/             player ship, drones, laser bolts, supply pickups
-  fx/                   explosions, sparks, debris, generated textures
-vendor/three/           Three.js r170 (MIT licence) and the few add-ons the game uses
+  main.js                boots the game, wires crew voice and voice orders, runs the frame loop
+  config.js              every gameplay number (speeds, damage, ranges, timings)
+  game.js                sectors, orders, weapons, sensors, damage, piloting, warp, camera
+  commands.js            the orders: button labels, hotkeys and voice phrases
+  crew.js                crew replies: comms log and speech synthesis
+  voice.js               voice orders through speech recognition
+  engineering.js         the power-routing repair puzzle
+  tactical.js            the tactical map
+  bridge.js              the bridge interior around the captain
+  cockpit.js             the scout cockpit and muzzle flashes
+  hud.js                 brackets, lead pip, scanner and death-ray arc over the 3D view
+  ui.js                  HUD panels, command bar, comms, banners and menus (DOM)
+  input.js               mouse, keyboard and touch for the bridge and the scout
+  upgrades.js            warship refits between sectors
+  audio.js               synthesized sound effects (Web Audio, no audio files)
+  engine/renderer.js     WebGL renderer, bloom and tone mapping
+  world/                 sector layout, sky, sun, planet, asteroids, space dust, noise
+  entities/              capital ships (model, flight, flagship AI), scouts, fighters, satellites, bolts, pickups
+  fx/                    explosions, sparks, warp tunnel, generated textures
+vendor/three/            Three.js r170 (MIT licence) and the few add-ons the game uses
 ```
 
 ## Tweaking
 
-Most balance changes are one-line edits in `src/config.js`. New refits go in `src/upgrades.js`.
-While the game is running, `window.game` is available in the browser console:
+Most balance changes are one-line edits in `src/config.js`. Refits are in `src/upgrades.js`, orders and
+their voice phrases in `src/commands.js`. While the game runs, `window.game` is available in the console:
 
 ```js
-game.stats.guns = 3          // all three cannons
-game.player.shield = 9999    // effectively invincible
+game.energy = 100                       // top up energy for the death ray
+game.warship.shield = 9999              // shrug off a fight
+game.photo = { position: [0, 300, 5800], target: [0, 0, 5200] }   // free camera for screenshots
+game.photo = null                       // back to the bridge
 ```
 
 ## Publish with GitHub Pages
 
 In the repository's **Settings → Pages**, set the source to **Deploy from a branch**, pick `main` and `/ (root)`.
-The game is then live at `https://<user>.github.io/<repo>/`.
+The game is then live at `https://<user>.github.io/<repo>/`, where voice orders work in Chrome, Edge and Safari.
 
 ## Ideas for what's next
 
-- A capital ship or boss every fifth sector
-- Missiles with a lock-on tone
-- Gamepad and flight-stick support
-- Cockpit instruments that show live data
-- A hangar between runs where salvage buys permanent upgrades
+- Land a scout on a planet and explore the surface
+- Crew members you can see on the bridge, at their stations
+- More puzzles in engineering (coolant, shield harmonics) and on salvage runs
+- Boss flagships with weak points, shields to knock down and escorts
+- A persistent campaign: salvage buys permanent upgrades between runs

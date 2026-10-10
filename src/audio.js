@@ -59,6 +59,53 @@ export class Sound {
     this.#tone({ type: 'sine', freq: 90, to: 360, dur: 0.6, vol: 0.08 });
   }
 
+  /** Main battery: a heavy thump with a crack on top. */
+  cannon(level = 1) {
+    this.#tone({ type: 'sine', freq: 110, to: 38, dur: 0.45, vol: 0.2 * level });
+    this.#noise({ dur: 0.25, vol: 0.12 * level, from: 2200, to: 180 });
+  }
+
+  rayCharge(seconds = 1.6) {
+    this.#tone({ type: 'sawtooth', freq: 70, to: 900, dur: seconds, vol: 0.05 });
+    this.#tone({ type: 'sine', freq: 140, to: 1800, dur: seconds, vol: 0.05 });
+  }
+
+  rayFire(seconds = 1.1) {
+    this.#noise({ dur: seconds, vol: 0.32, from: 900, to: 120, type: 'lowpass', q: 4 });
+    this.#tone({ type: 'sawtooth', freq: 55, to: 42, dur: seconds, vol: 0.16 });
+    this.#tone({ type: 'square', freq: 220, to: 180, dur: seconds, vol: 0.03 });
+  }
+
+  warpSpool(seconds = 1.6) {
+    this.#tone({ type: 'sine', freq: 60, to: 420, dur: seconds, vol: 0.12 });
+    this.#noise({ dur: seconds, vol: 0.08, from: 200, to: 2600, type: 'bandpass', q: 2 });
+  }
+
+  warpJump() {
+    this.#noise({ dur: 1.8, vol: 0.3, from: 3000, to: 120 });
+    this.#tone({ type: 'sine', freq: 300, to: 40, dur: 1.6, vol: 0.18 });
+  }
+
+  /** Two-tone klaxon for a flagship contact or critical damage. */
+  alert() {
+    for (let i = 0; i < 3; i++) {
+      this.#tone({ type: 'square', freq: 640, dur: 0.18, vol: 0.05, delay: i * 0.42 });
+      this.#tone({ type: 'square', freq: 480, dur: 0.18, vol: 0.05, delay: i * 0.42 + 0.2 });
+    }
+  }
+
+  launch() { this.#noise({ dur: 0.9, vol: 0.12, from: 400, to: 3000, type: 'bandpass', q: 1.5 }); }
+  shieldHit() { this.#tone({ type: 'sine', freq: 900, to: 300, dur: 0.18, vol: 0.06 }); }
+  rotate() { this.#tone({ type: 'triangle', freq: 1400, dur: 0.04, vol: 0.06 }); }
+
+  salvage() {
+    [784, 988, 1175].forEach((freq, i) => this.#tone({ type: 'sine', freq, dur: 0.18, vol: 0.1, delay: i * 0.08 }));
+  }
+
+  repair() {
+    [392, 523, 659, 784].forEach((freq, i) => this.#tone({ type: 'triangle', freq, dur: 0.2, vol: 0.1, delay: i * 0.07 }));
+  }
+
   select() { this.#tone({ type: 'triangle', freq: 520, to: 780, dur: 0.12, vol: 0.12 }); }
 
   explode(size = 1) {

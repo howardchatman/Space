@@ -17,10 +17,20 @@ const KEYS = {
   boost: ['ShiftLeft', 'ShiftRight'],
 };
 
-const NO_SCROLL = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space']);
+// Helm keys on the bridge.
+const HELM = {
+  left: ['KeyA', 'ArrowLeft'],
+  right: ['KeyD', 'ArrowRight'],
+  up: ['KeyR', 'ArrowUp'],
+  down: ['KeyF', 'ArrowDown'],
+  faster: ['KeyW'],
+  slower: ['KeyS'],
+};
 
+const NO_DEFAULT = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Tab']);
 const STICK_RADIUS = 64; // CSS px of thumb travel for full turn rate
 const CURSOR_DEADZONE = 0.06;
+const TAP_SLOP = 8; // px a press can move and still count as a click
 
 /** Shapes a raw -1..1 axis: deadzone, then a gentle curve for fine aiming near the center. */
 function curve(value, deadzone) {
@@ -30,19 +40,22 @@ function curve(value, deadzone) {
 }
 
 /**
- * Keyboard, mouse and touch flight controls.
- * - Mouse with pointer lock: moving the mouse turns the ship directly, like looking around.
- * - Mouse without pointer lock: the cursor's offset from center sets the turn rate.
- * - Touch: the left half of the screen is a floating stick; Fire and Boost buttons on the right.
+ * Keyboard, mouse and touch input for both seats.
+ * - Bridge: drag the view (mouse or finger) to look around, click or tap to pick a target, keys for
+ *   the helm and the crew orders. The cursor stays free for the command bar.
+ * - Scout: fighter controls. With pointer lock the mouse steers; without it, the cursor's offset from
+ *   center does; on touch, the left half is a stick and Fire/Boost are buttons.
  */
 export class Input {
   constructor(canvas, { fireButton, boostButton }) {
     this.canvas = canvas;
+    this.mode = 'bridge';
     this.down = new Set();
     this.pressed = new Set();
     this.lookX = 0;
     this.lookY = 0;
-    this.cursor = null; // { x, y } offset from center, in half-screens, when steering by cursor
+    this.cursor = null;
+    this.drag = null;
     this.mouseFire = false;
     this.mouseBoost = false;
     this.stick = null;
@@ -52,9 +65,10 @@ export class Input {
     this.touchSeen = false;
     this.onTouch = null;
     this.onLockChange = null;
+    this.onTap = null;
 
     window.addEventListener('keydown', (e) => {
-      if (NO_SCROLL.has(e.code)) e.preventDefault();
+      if (NO_DEFAULT.has(e.code)) e.preventDefault();
       if (!e.repeat) this.pressed.add(e.code);
       this.down.add(e.code);
     });
@@ -72,7 +86,7 @@ export class Input {
       if (this.locked) {
         this.lookX += e.movementX;
         this.lookY += e.movementY;
-      } else if (e.target === canvas) {
+      } else if (e.target === canvas && this.mode === 'pilot') {
         const rect = canvas.getBoundingClientRect();
         const half = Math.min(rect.width, rect.height) / 2;
         this.cursor = {
@@ -83,6 +97,7 @@ export class Input {
     });
     canvas.addEventListener('mouseleave', () => { this.cursor = null; });
     canvas.addEventListener('mousedown', (e) => {
+      if (this.mode !== 'pilot') return;
       if (e.button === 0) this.mouseFire = true;
       if (e.button === 2) this.mouseBoost = true;
     });
@@ -92,10 +107,10 @@ export class Input {
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    canvas.addEventListener('pointerdown', (e) => this.#touchDown(e));
-    canvas.addEventListener('pointermove', (e) => this.#touchMove(e));
+    canvas.addEventListener('pointerdown', (e) => this.#pointerDown(e));
+    canvas.addEventListener('pointermove', (e) => this.#pointerMove(e));
     for (const type of ['pointerup', 'pointercancel']) {
-      canvas.addEventListener(type, (e) => this.#touchUp(e.pointerId));
+      canvas.addEventListener(type, (e) => this.#pointerUp(e, type === 'pointercancel'));
     }
     this.#holdButton(fireButton, (on, e) => {
       if (on) this.firePointers.add(e.pointerId);
@@ -104,9 +119,15 @@ export class Input {
     this.#holdButton(boostButton, (on) => { this.boostHeld = on; });
   }
 
-  /** Captures the mouse for direct steering. Must be called from a click or key handler. */
+  setMode(mode) {
+    this.mode = mode;
+    this.releaseAll();
+    this.cursor = null;
+  }
+
+  /** Captures the mouse for direct steering in a scout. Must be called from a click or key handler. */
   requestLock() {
-    if (this.touchSeen || this.locked || !this.canvas.requestPointerLock) return;
+    if (this.touchSeen || this.locked || this.mode !== 'pilot' || !this.canvas.requestPointerLock) return;
     try {
       this.canvas.requestPointerLock()?.catch?.(() => {});
     } catch {
@@ -118,7 +139,27 @@ export class Input {
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
-  /** The flight controls for this frame, merged across devices. Consumes accumulated mouse movement. */
+  /** How far the view was dragged (radians) since the last call, for looking around the bridge. */
+  readLook() {
+    const k = CONFIG.warship.lookSensitivity;
+    const look = { yaw: -this.lookX * k, pitch: -this.lookY * k };
+    this.lookX = 0;
+    this.lookY = 0;
+    return look;
+  }
+
+  /** Helm keys on the bridge: turn, climb and throttle, each -1..1. */
+  readHelm() {
+    const held = (codes) => codes.some((c) => this.down.has(c));
+    const axis = (plus, minus) => (held(plus) ? 1 : 0) - (held(minus) ? 1 : 0);
+    return {
+      yaw: axis(HELM.left, HELM.right),
+      pitch: axis(HELM.up, HELM.down),
+      throttle: axis(HELM.faster, HELM.slower),
+    };
+  }
+
+  /** Fighter controls for this frame, merged across devices. Consumes accumulated mouse movement. */
   read() {
     const held = (codes) => codes.some((c) => this.down.has(c));
     const axis = (plus, minus) => (held(plus) ? 1 : 0) - (held(minus) ? 1 : 0);
@@ -181,19 +222,11 @@ export class Input {
     this.mouseFire = false;
     this.mouseBoost = false;
     this.stick = null;
+    this.drag = null;
     this.firePointers.clear();
     this.boostHeld = false;
     this.lookX = 0;
     this.lookY = 0;
-  }
-
-  /** Pointer capture keeps a drag alive past element edges; some browsers refuse it, which is fine. */
-  #capture(element, pointerId) {
-    try {
-      element.setPointerCapture?.(pointerId);
-    } catch {
-      // Not capturable (pointer already released); the gesture still works without it.
-    }
   }
 
   /** Switches to touch controls: no mouse steering, no pointer lock. */
@@ -208,9 +241,23 @@ export class Input {
     this.onTouch?.();
   }
 
-  #touchDown(e) {
+  #capture(element, pointerId) {
+    try {
+      element.setPointerCapture?.(pointerId);
+    } catch {
+      // Not capturable (pointer already released); the gesture still works without it.
+    }
+  }
+
+  #pointerDown(e) {
+    if (e.pointerType !== 'mouse') this.#markTouch();
+    if (this.mode === 'bridge') {
+      if (e.button !== 0 || this.drag) return;
+      this.#capture(this.canvas, e.pointerId);
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
+      return;
+    }
     if (e.pointerType === 'mouse') return;
-    this.#markTouch();
     this.#capture(this.canvas, e.pointerId);
     const rect = this.canvas.getBoundingClientRect();
     if (e.clientX - rect.left < rect.width / 2) {
@@ -220,16 +267,33 @@ export class Input {
     }
   }
 
-  #touchMove(e) {
+  #pointerMove(e) {
+    if (this.drag && e.pointerId === this.drag.id) {
+      const dx = e.clientX - this.drag.x;
+      const dy = e.clientY - this.drag.y;
+      this.drag.x = e.clientX;
+      this.drag.y = e.clientY;
+      this.drag.moved += Math.abs(dx) + Math.abs(dy);
+      this.lookX += dx;
+      this.lookY += dy;
+    }
     if (this.stick && e.pointerId === this.stick.id) {
       this.stick.x = e.clientX;
       this.stick.y = e.clientY;
     }
   }
 
-  #touchUp(pointerId) {
-    if (this.stick && this.stick.id === pointerId) this.stick = null;
-    this.firePointers.delete(pointerId);
+  #pointerUp(e, cancelled) {
+    if (this.drag && e.pointerId === this.drag.id) {
+      const tap = !cancelled && this.drag.moved < TAP_SLOP;
+      this.drag = null;
+      if (tap) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.onTap?.(e.clientX - rect.left, e.clientY - rect.top);
+      }
+    }
+    if (this.stick && this.stick.id === e.pointerId) this.stick = null;
+    this.firePointers.delete(e.pointerId);
   }
 
   #holdButton(button, set) {

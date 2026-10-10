@@ -1,72 +1,103 @@
-// Refits offered between sectors. Each one mutates the ship's stats (see baseStats in entities/player.js).
+import { CONFIG } from './config.js';
+
+/** A fresh copy of the warship's upgradeable stats. Refits mutate this object. */
+export function baseShipStats() {
+  const w = CONFIG.warship;
+  return {
+    maxHull: w.hull,
+    maxShield: w.shield,
+    shieldRegen: w.shieldRegen,
+    maxEnergy: w.energy,
+    energyRegen: w.energyRegen,
+    reload: w.cannon.reload,
+    cannonDamage: w.cannon.damage,
+    rayDamage: w.deathRay.damage,
+    rayCost: w.deathRay.cost,
+    speed: 1,
+    scanRange: w.scanRange,
+    scouts: CONFIG.scout.count,
+    scoutHp: CONFIG.scout.hp,
+  };
+}
+
+// Refits offered after each warp jump.
 export const UPGRADES = [
   {
-    id: 'cannon',
-    name: 'Linked Cannons',
-    desc: 'Both wing cannons fire together. Second level adds a nose cannon.',
-    max: 2,
-    apply: (s) => { s.guns += 1; },
-  },
-  {
-    id: 'capacitors',
-    name: 'Rapid Capacitors',
-    desc: 'Fire 18% faster.',
+    id: 'armor',
+    name: 'Reinforced Armor',
+    desc: 'Hull +200, and the yard repairs 200 damage now.',
     max: 4,
-    apply: (s) => { s.fireInterval *= 0.82; },
-  },
-  {
-    id: 'rounds',
-    name: 'Heavy Bolts',
-    desc: 'Each bolt deals 1 more damage.',
-    max: 3,
-    apply: (s) => { s.boltDamage += 1; },
-  },
-  {
-    id: 'rail',
-    name: 'Focusing Coils',
-    desc: 'Bolts fly 20% faster and reach farther.',
-    max: 3,
-    apply: (s) => { s.boltSpeed *= 1.2; s.boltRange *= 1.12; },
-  },
-  {
-    id: 'plating',
-    name: 'Shield Emitters',
-    desc: 'Max shield +25, and a full recharge now.',
-    max: 4,
-    apply: (s, ship) => { s.maxShield += 25; ship.shield = s.maxShield; },
-  },
-  {
-    id: 'regen',
-    name: 'Field Regenerator',
-    desc: 'Shield recharges 1.5 points every second.',
-    max: 3,
-    apply: (s) => { s.regen += 1.5; },
-  },
-  {
-    id: 'ion',
-    name: 'Ion Thrusters',
-    desc: 'Top speed, acceleration and turning +12%.',
-    max: 3,
-    apply: (s) => {
-      s.maxSpeed *= 1.12;
-      s.accel *= 1.12;
-      s.turnRate *= 1.12;
-      s.rollRate *= 1.12;
+    apply: (s, ship) => {
+      s.maxHull += 200;
+      ship.maxHull = s.maxHull;
+      ship.hull = Math.min(ship.maxHull, ship.hull + 200);
     },
   },
   {
-    id: 'afterburner',
-    name: 'Afterburner Coils',
-    desc: 'Boost recharges 30% faster.',
+    id: 'shields',
+    name: 'Shield Capacitors',
+    desc: 'Shields hold 150 more and recharge 25% faster.',
     max: 3,
-    apply: (s) => { s.boostCooldown *= 0.7; },
+    apply: (s, ship) => {
+      s.maxShield += 150;
+      s.shieldRegen *= 1.25;
+      ship.maxShield = s.maxShield;
+    },
   },
   {
-    id: 'tractor',
-    name: 'Tractor Beam',
-    desc: 'Pulls in supply crystals from twice as far away.',
+    id: 'autoloaders',
+    name: 'Autoloaders',
+    desc: 'Main batteries reload 20% faster.',
+    max: 3,
+    apply: (s) => { s.reload *= 0.8; },
+  },
+  {
+    id: 'shells',
+    name: 'Heavy Bolts',
+    desc: 'Main battery hits deal 30% more damage.',
+    max: 3,
+    apply: (s) => { s.cannonDamage *= 1.3; },
+  },
+  {
+    id: 'array',
+    name: 'Focusing Array',
+    desc: 'The death ray deals 30% more damage.',
+    max: 3,
+    apply: (s) => { s.rayDamage *= 1.3; },
+  },
+  {
+    id: 'reactor',
+    name: 'Reactor Tuning',
+    desc: 'Energy recharges 60% faster and the ray costs 5 less.',
+    max: 3,
+    apply: (s) => {
+      s.energyRegen *= 1.6;
+      s.rayCost -= 5;
+    },
+  },
+  {
+    id: 'engines',
+    name: 'Engine Overhaul',
+    desc: 'Top speed and turning +15%.',
     max: 2,
-    apply: (s) => { s.magnetRange *= 2; },
+    apply: (s) => { s.speed *= 1.15; },
+  },
+  {
+    id: 'sensors',
+    name: 'Long-Range Sensors',
+    desc: 'Scanner range +30%.',
+    max: 2,
+    apply: (s) => { s.scanRange *= 1.3; },
+  },
+  {
+    id: 'hangar',
+    name: 'Expanded Hangar',
+    desc: 'One more recon craft, and all of them get 50% more armor.',
+    max: 2,
+    apply: (s) => {
+      s.scouts += 1;
+      s.scoutHp *= 1.5;
+    },
   },
 ];
 

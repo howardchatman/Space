@@ -235,6 +235,16 @@ export class Planet {
     this.group.add(this.atmosphere);
   }
 
+  /** Frees the baked cube maps and GPU buffers when a new sector replaces this planet. */
+  dispose() {
+    this.maps.surface.dispose();
+    this.maps.detail.dispose();
+    this.surface.geometry.dispose();
+    this.atmosphere.geometry.dispose();
+    this.surfaceMaterial.dispose();
+    this.atmosphereMaterial.dispose();
+  }
+
   update(dt) {
     this.surface.rotation.y += dt * 0.0035;
     this.surfaceMaterial.uniforms.uCloudSpin.value += dt * 0.0012;
