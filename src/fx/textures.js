@@ -42,6 +42,27 @@ export function sunTexture() {
   });
 }
 
+/** A soft six-sided aperture ghost for lens flares: brighter at the rim, like a real lens reflection. */
+export function ghostTexture() {
+  return canvasTexture('ghost', 128, (g, s) => {
+    const hexagon = (r) => {
+      g.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        g.lineTo(s / 2 + Math.cos(a) * r, s / 2 + Math.sin(a) * r);
+      }
+      g.closePath();
+    };
+    g.filter = 'blur(2px)';
+    hexagon(s * 0.44);
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    g.fill();
+    g.lineWidth = s * 0.04;
+    g.strokeStyle = 'rgba(255,255,255,0.8)';
+    g.stroke();
+  });
+}
+
 /** Thin bright ring for shockwaves. */
 export function ringTexture() {
   return canvasTexture('ring', 256, (g, s) => {

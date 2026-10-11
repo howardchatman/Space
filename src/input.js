@@ -66,6 +66,9 @@ export class Input {
     this.onTouch = null;
     this.onLockChange = null;
     this.onTap = null;
+    this.helmPad = { x: 0, y: 0 }; // touch helm pad offset, -1..1 each way
+    this.helmKnob = null;
+    this.throttleSet = null; // a throttle the touch slider asked for, until the game takes it
 
     window.addEventListener('keydown', (e) => {
       if (NO_DEFAULT.has(e.code)) e.preventDefault();
@@ -148,15 +151,84 @@ export class Input {
     return look;
   }
 
-  /** Helm keys on the bridge: turn, climb and throttle, each -1..1. */
+  /** Helm keys (or the touch helm pad) on the bridge: turn, climb and throttle, each -1..1. */
   readHelm() {
     const held = (codes) => codes.some((c) => this.down.has(c));
     const axis = (plus, minus) => (held(plus) ? 1 : 0) - (held(minus) ? 1 : 0);
+    const clampAxis = (v) => Math.max(-1, Math.min(1, v));
     return {
-      yaw: axis(HELM.left, HELM.right),
-      pitch: axis(HELM.up, HELM.down),
+      yaw: clampAxis(axis(HELM.left, HELM.right) - curve(this.helmPad.x, 0.15)),
+      pitch: clampAxis(axis(HELM.up, HELM.down) - curve(this.helmPad.y, 0.15)),
       throttle: axis(HELM.faster, HELM.slower),
     };
+  }
+
+  /** The throttle setting from the touch slider, if it moved since the last call (0..1), else null. */
+  takeThrottle() {
+    const value = this.throttleSet;
+    this.throttleSet = null;
+    return value;
+  }
+
+  /**
+   * The on-screen helm for touch: dragging the pad's knob turns and climbs the warship (it springs back
+   * when let go), and the slider sets the throttle.
+   */
+  bindHelm(pad, slider) {
+    if (!pad || !slider) return;
+    this.helmKnob = pad.querySelector('.helm-knob');
+    const drag = (element, onMove, onEnd) => {
+      let id = null;
+      element.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.#markTouch();
+        if (id !== null) return;
+        id = e.pointerId;
+        this.#capture(element, id);
+        element.classList.add('active');
+        onMove(e, element.getBoundingClientRect());
+      });
+      element.addEventListener('pointermove', (e) => {
+        if (e.pointerId === id) onMove(e, element.getBoundingClientRect());
+      });
+      const end = (e) => {
+        if (e.pointerId !== id) return;
+        id = null;
+        element.classList.remove('active');
+        onEnd?.();
+      };
+      element.addEventListener('pointerup', end);
+      element.addEventListener('pointercancel', end);
+      element.addEventListener('contextmenu', (e) => e.preventDefault());
+    };
+    drag(pad, (e, r) => {
+      const half = r.width / 2;
+      let x = (e.clientX - r.left - half) / half;
+      let y = (e.clientY - r.top - half) / half;
+      const len = Math.hypot(x, y);
+      if (len > 1) {
+        x /= len;
+        y /= len;
+      }
+      this.helmPad.x = x;
+      this.helmPad.y = y;
+      this.#placeKnob(x * half * 0.6, y * half * 0.6);
+    }, () => this.#centerHelm());
+    drag(slider, (e, r) => {
+      const value = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+      this.throttleSet = Math.round(value * 20) / 20;
+    });
+  }
+
+  #placeKnob(x, y) {
+    this.helmKnob?.style.setProperty('--kx', `${x}px`);
+    this.helmKnob?.style.setProperty('--ky', `${y}px`);
+  }
+
+  #centerHelm() {
+    this.helmPad.x = 0;
+    this.helmPad.y = 0;
+    this.#placeKnob(0, 0);
   }
 
   /** Fighter controls for this frame, merged across devices. Consumes accumulated mouse movement. */
@@ -227,6 +299,8 @@ export class Input {
     this.boostHeld = false;
     this.lookX = 0;
     this.lookY = 0;
+    this.throttleSet = null;
+    this.#centerHelm();
   }
 
   /** Switches to touch controls: no mouse steering, no pointer lock. */

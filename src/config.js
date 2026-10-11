@@ -47,6 +47,13 @@ export const CONFIG = {
       arc: 0.45, // radians off the bow the ray can reach
       reload: 12,
     },
+    torpedo: {
+      magazine: 6, // a full load each sector
+      salvo: 2, // one from each bow tube per order
+      reload: 7, // seconds to reload the tubes
+      damage: 170, // per hit; shields only take half of it
+      range: 4200,
+    },
     magnetRange: 450, // tractor beam for energy cells
   },
 
@@ -73,6 +80,12 @@ export const CONFIG = {
     launchInterval: 24,
     maxFighters: 4,
     score: 2500,
+    // Point defense against your torpedoes, slaved to the gun batteries: it weakens as they're knocked out.
+    pointDefense: { range: 700, rate: 4, boltSpeed: 1100, spread: 0.022 }, // rate per mount, all guns working
+    retreatAt: 0.3, // hull fraction where it breaks off and runs, once per fight
+    retreatTime: 45,
+    retreatBoost: 1.6, // emergency burn while it runs: speed and turning
+    retreatTurn: 1.6, // and its helm swings harder
   },
 
   // Enemy corvettes: escorts and patrols that fight at range and fire homing torpedoes.
@@ -92,6 +105,7 @@ export const CONFIG = {
     score: 600,
   },
 
+  // Corvette torpedoes.
   torpedo: {
     launchSpeed: 50,
     speed: 175,
@@ -101,6 +115,13 @@ export const CONFIG = {
     hp: 5,
     damage: 75,
   },
+
+  // Your warship's torpedoes in flight: faster and nimbler than the corvettes'.
+  ourTorpedo: { launchSpeed: 60, speed: 230, accel: 70, turnRate: 0.8, life: 30, hp: 4 },
+
+  // Emergency orders.
+  evasive: { duration: 8, cooldown: 20, missChance: 0.5 }, // share of hits that miss while the helm weaves
+  damageControl: { cost: 25, duration: 12, cooldown: 30, hull: 120, system: 0.25 }, // repaired over the duration
 
   // Your warship's automatic point-defense guns.
   pointDefense: {
@@ -195,7 +216,7 @@ export const CONFIG = {
     overdriveTime: 6,
   },
 
-  salvage: { energy: 30, score: 300, range: 380 },
+  salvage: { energy: 30, torpedoes: 2, score: 300, range: 380 },
 
   combo: { window: 4, killsPerStep: 3, maxMultiplier: 5 },
 

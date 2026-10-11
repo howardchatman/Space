@@ -331,6 +331,16 @@ export function buildCapitalShip({ hostile = false, seed = 1, colors }) {
     }
   }
 
+  // Torpedo tubes low in the bow, one each side, angled slightly outward.
+  const torpedoTubes = [-1, 1].map((s) => {
+    const x = s * (sideX(-150) + 0.4);
+    const mouth = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.2, 1.2, 14), gunMaterial);
+    mouth.rotation.z = Math.PI / 2;
+    mouth.position.set(x, -3, -150);
+    object.add(mouth);
+    return { position: new THREE.Vector3(x + s * 3, -3, -150), direction: new THREE.Vector3(s * 0.35, 0, -1).normalize() };
+  });
+
   // Death ray emitter at the bow: a ring with a core that glows as it charges.
   const emitter = new THREE.Group();
   emitter.position.set(0, 6, -HALF_LENGTH - 44);
@@ -449,10 +459,24 @@ export function buildCapitalShip({ hostile = false, seed = 1, colors }) {
   const shield = new ShieldBubble(new THREE.Vector3(62, 72, 285), new THREE.Vector3(0, 18, -10), lightColor.clone().multiplyScalar(0.9));
   object.add(shield.mesh);
 
+  // A random point on the deck or the side plating, in the ship's space: where fires break out.
+  // `forward` keeps it on the deck ahead of the bridge, where the captain can see it.
+  const hullPoint = (forward = false) => {
+    const z = forward ? -HALF_LENGTH + 30 + Math.random() * 230 : (Math.random() * 2 - 1) * (HALF_LENGTH - 20);
+    if (forward || Math.random() < 0.6) {
+      const x = (Math.random() * 2 - 1) * sideX(z) * 0.8;
+      const onUpperHull = Math.abs(x) < 22 && z > -80 && z < 170; // the raised hull amidships (see above)
+      return new THREE.Vector3(x, onUpperHull ? HALF_HEIGHT + 11 : deckY(z) + 1, z);
+    }
+    const s = Math.random() < 0.5 ? -1 : 1;
+    return new THREE.Vector3(s * (sideX(z) + 1), (Math.random() * 2 - 1) * deckY(z) * 0.7, z);
+  };
+
   return {
     object,
     sections,
     breakZ,
+    hullPoint,
     turrets,
     emitter: { group: emitter, core, coreMaterial, glow: coreGlow, color: lightColor },
     engines,
@@ -466,6 +490,7 @@ export function buildCapitalShip({ hostile = false, seed = 1, colors }) {
     radar,
     plumes,
     pdMounts,
+    torpedoTubes,
     shield,
     materials: [hullMaterial, fittingMaterial, gunMaterial],
   };

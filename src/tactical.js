@@ -123,8 +123,8 @@ export class TacticalMap {
         this.#diamond(x, y, 6, p.hostile, false);
         ctx.fillStyle = p.hostile;
         ctx.fillText('CORVETTE', x + 10, y + 4);
-      } else if (c.kind === 'torpedo') {
-        ctx.fillStyle = p.hostile;
+      } else if (c.kind === 'torpedo' || c.kind === 'ourTorpedo') {
+        ctx.fillStyle = c.kind === 'torpedo' ? p.hostile : p.ice;
         ctx.beginPath();
         ctx.arc(x, y, 2, 0, TAU);
         ctx.fill();

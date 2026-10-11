@@ -63,6 +63,9 @@ export class Flagship extends CapitalShip {
     this.launchTimer = 6;
     this.sinceHit = 99;
     this.flash = 0;
+    this.pdTimer = 0;
+    this.retreated = false; // it only runs once per fight
+    this.retreatTimer = 0;
     this.orbitSide = Math.random() < 0.5 ? -1 : 1;
     const scale = 1 + f.partsPerSector * k;
     this.parts = [
@@ -102,11 +105,12 @@ export class Flagship extends CapitalShip {
   }
 
   /**
-   * Runs the flagship's tactics against your warship. Returns { shots, launch, noticed } for this frame.
+   * Runs the flagship's tactics against your warship. Returns { shots, launch, noticed, retreat, rejoin }
+   * for this frame (retreat: it just broke off to run; rejoin: it just turned back to fight).
    */
   think(dt, enemy, fighters) {
     const f = CONFIG.flagship;
-    const result = { shots: [], launch: false, noticed: false };
+    const result = { shots: [], launch: false, noticed: false, retreat: false, rejoin: false };
     if (this.dead) return result;
 
     this.sinceHit += dt;
@@ -127,8 +131,34 @@ export class Flagship extends CapitalShip {
       return result;
     }
 
-    // Close in, then swing broadside so more turrets bear.
-    if (dist > f.engageRange) {
+    // Badly hurt with its engines working, it breaks off and runs on an emergency burn.
+    if (this.state === 'hunting' && !this.retreated && !this.enginesDown && this.hull < this.maxHull * f.retreatAt) {
+      this.state = 'retreat';
+      this.retreated = true;
+      this.retreatTimer = f.retreatTime;
+      result.retreat = true;
+    }
+    if (this.state === 'retreat') {
+      this.retreatTimer -= dt;
+      if (this.retreatTimer <= 0 || this.enginesDown) {
+        this.state = 'hunting';
+        this.maxYawRate = f.yawRate;
+        if (!this.enginesDown) this.speedFactor = 1;
+        result.rejoin = true;
+      }
+    }
+
+    if (this.state === 'retreat') {
+      // Run directly away, but stay inside the sector.
+      const away = this.position.clone().sub(enemy.position).setY(0).normalize().multiplyScalar(3000).add(this.position);
+      const limit = CONFIG.sector.radius * 0.9;
+      if (away.length() > limit) away.setLength(limit);
+      this.steerToward(away);
+      this.throttle = 1;
+      this.speedFactor = f.retreatBoost;
+      this.maxYawRate = f.yawRate * f.retreatTurn;
+    } else if (dist > f.engageRange) {
+      // Close in, then swing broadside so more turrets bear.
       this.steerToward(enemy.position);
       this.throttle = 1;
     } else {

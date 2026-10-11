@@ -13,6 +13,8 @@ export function baseShipStats() {
     cannonDamage: w.cannon.damage,
     rayDamage: w.deathRay.damage,
     rayCost: w.deathRay.cost,
+    torpedoes: w.torpedo.magazine,
+    torpedoDamage: w.torpedo.damage,
     speed: 1,
     scanRange: w.scanRange,
     scouts: CONFIG.scout.count,
@@ -64,6 +66,16 @@ export const UPGRADES = [
     desc: 'The death ray deals 30% more damage.',
     max: 3,
     apply: (s) => { s.rayDamage *= 1.3; },
+  },
+  {
+    id: 'torpedoes',
+    name: 'Torpedo Racks',
+    desc: 'Three more torpedoes each sector, and they hit 25% harder.',
+    max: 2,
+    apply: (s) => {
+      s.torpedoes += 3;
+      s.torpedoDamage *= 1.25;
+    },
   },
   {
     id: 'reactor',

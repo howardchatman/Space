@@ -7,7 +7,7 @@ const formatScore = (n) => Math.round(n).toLocaleString('en-US');
 const formatDistance = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
 
 // Orders shown on the command bar, in order. The map has its own button up top.
-const BAR = ['cannons', 'deathray', 'recon', 'recall', 'course', 'pilot', 'engineering', 'full', 'stop', 'warp'];
+const BAR = ['cannons', 'deathray', 'torpedoes', 'evasive', 'recon', 'recall', 'course', 'pilot', 'engineering', 'damage-control', 'full', 'stop', 'warp'];
 const COMMS_LINES = 4;
 
 /** Everything drawn in HTML rather than on the canvas: HUD panels, orders, comms, banners and menus. */
@@ -26,6 +26,8 @@ export class UI {
     this.boostButton = $('touch-boost');
     this.mapOverlay = $('map-overlay');
     this.mapCanvas = $('map-canvas');
+    this.helmPad = $('helm-pad');
+    this.helmThrottle = $('helm-throttle');
     this.engineeringRoot = $('engineering');
     this.touchMode = false;
     this.hudOn = false;
@@ -190,7 +192,11 @@ export class UI {
     this.#set('overdrive', overdrive, (v) => { $('hud-overdrive').hidden = !v; });
   }
 
-  updateBridge({ hull, maxHull, shield, maxShield, energy, maxEnergy, systems, target, speed, throttle, course, commands, power }) {
+  updateBridge({ hull, maxHull, shield, maxShield, energy, maxEnergy, systems, target, speed, throttle, course, commands, power, torpedoes }) {
+    this.#set('torps', `${torpedoes.stock}/${torpedoes.max}`, (v) => {
+      $('hud-torps').textContent = v;
+      $('hud-torps').dataset.empty = String(torpedoes.stock === 0);
+    });
     this.#set('power', power, (v) => {
       for (const b of document.querySelectorAll('#hud-power button')) b.setAttribute('aria-pressed', String(b.dataset.power === v));
     });
@@ -213,12 +219,18 @@ export class UI {
       if (target?.hull != null) $('hud-target-bar').style.transform = `scaleX(${target.hull})`;
     });
     this.#set('speed', Math.round(speed), (v) => { $('hud-speed').textContent = String(v); });
-    this.#set('throttle', Math.round(Math.max(0, throttle) * 50) / 50, (v) => { $('hud-throttle').style.transform = `scaleX(${v})`; });
+    this.#set('throttle', Math.round(Math.max(0, throttle) * 50) / 50, (v) => {
+      $('hud-throttle').style.transform = `scaleX(${v})`;
+      this.helmThrottle.style.setProperty('--throttle', String(v));
+      this.helmThrottle.setAttribute('aria-valuenow', String(Math.round(v * 100)));
+    });
     this.#set('course', course ?? '', (v) => { $('hud-course').textContent = v || 'Holding course'; });
     for (const [id, state] of Object.entries(commands)) {
       this.#set(`cmd-${id}`, `${state.state}|${Math.round((state.progress ?? 1) * 20)}`, () => {
         const b = this.commandButtons.get(id);
         if (!b) return;
+        // An order that needs attention scrolls into view if the bar has scrolled it off screen.
+        if (state.state === 'alert' && b.dataset.state !== 'alert') b.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
         b.dataset.state = state.state;
         b.style.setProperty('--progress', String(state.progress ?? 1));
       });

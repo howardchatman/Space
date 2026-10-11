@@ -41,6 +41,7 @@ const VOICE_MESSAGES = {
 const canvas = document.getElementById('view');
 const ui = new UI();
 const input = new Input(canvas, { fireButton: ui.fireButton, boostButton: ui.boostButton });
+input.bindHelm(ui.helmPad, ui.helmThrottle);
 const sound = new Sound();
 const crew = new Crew(ui);
 

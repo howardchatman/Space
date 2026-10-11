@@ -64,6 +64,7 @@
           <span id="meter-shield" class="meter"><span id="hud-shield-bar"></span></span>
           <span class="hud-label">Energy <span id="hud-energy" class="gauge-value">100</span></span>
           <span class="meter energy"><span id="hud-energy-bar"></span></span>
+          <span class="hud-label">Torpedoes <span id="hud-torps" class="gauge-value">6/6</span></span>
           <dl id="hud-systems" class="systems"></dl>
           <span class="hud-label power-label">Power</span>
           <div id="hud-power" class="power" role="group" aria-label="Power distribution">
@@ -101,6 +102,15 @@
 
       <ol id="comms" aria-live="polite" aria-label="Crew reports"></ol>
       <nav id="command-bar" aria-label="Orders"></nav>
+
+      <div id="touch-helm">
+        <div id="helm-throttle" class="helm-throttle" role="slider" aria-label="Throttle" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-caption="Speed">
+          <span class="helm-fill"></span>
+        </div>
+        <div id="helm-pad" class="helm-pad" role="group" aria-label="Helm: drag to turn and climb" data-caption="Helm">
+          <span class="helm-knob"></span>
+        </div>
+      </div>
     </div>
 
     <p id="lock-hint" hidden>Click the view to steer with the mouse · Esc to release</p>

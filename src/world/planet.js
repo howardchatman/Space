@@ -97,6 +97,7 @@ function bakePlanet(renderer, size, seed) {
 export class Planet {
   constructor({ renderer, radius, position, sunDirection, bakeSize = 512, seed = 3.7 }) {
     this.radius = radius;
+    this.shineColor = new THREE.Color(0x5f84bd); // light it throws back onto the ships
     this.group = new THREE.Group();
     this.group.position.copy(position);
     this.tilt = new THREE.Group();

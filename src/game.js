@@ -6,6 +6,8 @@ import { bakeMilkyWay, createStars } from './world/sky.js';
 import { Sun } from './world/sun.js';
 import { useShadows } from './fx/shadows.js';
 import { Planet } from './world/planet.js';
+import { GasGiant } from './world/gasgiant.js';
+import { LensFlare } from './fx/flare.js';
 import { SpaceDust } from './world/dust.js';
 import { AsteroidField } from './world/asteroids.js';
 import { generateSector } from './world/sector.js';
@@ -114,10 +116,15 @@ export class Game {
     this.shadows = this.pipeline.shadows;
     if (this.shadows) this.sun.enableShadows(this.scene);
     this.planetShine = new THREE.DirectionalLight(0x5f84bd, 0.22);
-    this.scene.add(this.planetShine, new THREE.AmbientLight(0xffffff, 0.02));
+    // A faint fill from the starfield and nebulae, so the night sides of the ships still show their shape.
+    this.fill = new THREE.HemisphereLight(0x7d8cb0, 0x2a2420, 0.6);
+    this.scene.add(this.planetShine, this.fill, new THREE.AmbientLight(0xffffff, 0.02));
     // One interior light on the camera serves both the bridge and the scout cockpit.
     this.interiorLight = new THREE.PointLight(0xffd8b0, 2, 24, 2);
     this.camera.add(this.interiorLight);
+    this.flare = new LensFlare(this.camera);
+    this._sunQ = new THREE.Quaternion();
+    this._sunV = new THREE.Vector3();
     this.planet = null;
 
     this.dust = new SpaceDust(this.lowPower ? 450 : 700);
@@ -129,6 +136,7 @@ export class Game {
       hostile: { radius: 0.3, length: 14, color: this.colors.hostile.clone().multiplyScalar(6), glow: 6 },
       hostileBattery: { radius: 0.9, length: 40, color: this.colors.hostile.clone().multiplyScalar(4), glow: 16 },
       pd: { radius: 0.14, length: 18, color: this.colors.flare.clone().lerp(new THREE.Color(1, 1, 0.85), 0.5).multiplyScalar(2.2), glow: 3 },
+      pdHostile: { radius: 0.14, length: 18, color: this.colors.hostile.clone().lerp(new THREE.Color(1, 0.9, 0.85), 0.35).multiplyScalar(2.2), glow: 3 },
     });
     this.pickups = new Pickups(this.scene, { energy: this.colors.energy, shield: this.colors.ice, overdrive: this.colors.flareHot });
     this.trails = new Trails(this.scene);
@@ -248,6 +256,8 @@ export class Game {
     w.object.visible = true;
     this.wrecks = this.wrecks?.filter((wreck) => wreck.ship !== w) ?? [];
     this.#mend(w);
+    w.fires = [];
+    this.flicker = 0;
     this.lastHit = -10;
     this.alerts = {};
     this.deathTimer = 0;
@@ -270,16 +280,16 @@ export class Game {
       this.scene.remove(this.planet.group);
       this.planet.dispose?.();
     }
-    this.planet = new Planet({
+    const World = spec.planet.type === 'gas' ? GasGiant : Planet;
+    this.planet = new World({
+      ...spec.planet,
       renderer: this.renderer,
-      radius: spec.planet.radius,
-      position: spec.planet.position,
       sunDirection: this.sunDirection,
       bakeSize: this.lowPower ? 512 : 1024,
-      seed: spec.planet.seed,
     });
     this.scene.add(this.planet.group);
     this.planetShine.position.copy(spec.planet.position).normalize();
+    this.planetShine.color.copy(this.planet.shineColor);
 
     for (const c of spec.clusters) this.field.populateCluster(c.center, c.radius, c.count);
     this.satellites = spec.satellites.map((p, i) => {
@@ -337,6 +347,10 @@ export class Game {
     this.senseTimer = 0;
     this.targetTimer = 0;
     this.pdTimer = 0;
+    this.torpedoStock = this.shipStats.torpedoes;
+    this.tubes = { reload: 0, total: 1 };
+    this.evasive = { t: 0, cooldown: 0, total: 1, phase: 0 };
+    this.dc = { t: 0, cooldown: 0, total: 1, system: null };
     this.report = { start: this.time, fighters: 0, corvettes: 0, torpedoes: 0, parts: 0, hullLost: 0, salvage: 0 };
   }
 
@@ -412,6 +426,7 @@ export class Game {
     }
     this.scoutsDocked = this.shipStats.scouts;
     this.scoutNames = Array.from({ length: this.shipStats.scouts }, (_, i) => `Recon ${i + 1}`);
+    this.torpedoStock = this.shipStats.torpedoes;
     this.sound.select();
     this.setState('playing');
     this.ui.show(null);
@@ -529,6 +544,9 @@ export class Game {
     switch (id) {
       case 'cannons': return this.#orderCannons();
       case 'deathray': return this.#orderDeathRay();
+      case 'torpedoes': return this.#orderTorpedoes();
+      case 'evasive': return this.#orderEvasive();
+      case 'damage-control': return this.#orderDamageControl();
       case 'recon': return this.#orderRecon();
       case 'recall': return this.#orderRecall();
       case 'course': return this.#orderCourse();
@@ -586,6 +604,7 @@ export class Game {
     if (r.phase !== 'idle') return undefined;
     if (this.systems.weapons < 0.25) return this.crew.say('Weapons', "The ray emitter's damaged. Repair weapons first.");
     if (r.cooldown > 0) return this.crew.say('Weapons', `Ray capacitors recharging, ${Math.ceil(r.cooldown)} seconds.`);
+    if (this.evasive.t > 0) return this.crew.say('Weapons', "Can't hold the ray steady while we're evading, Captain.");
     const cost = this.shipStats.rayCost;
     if (this.energy < cost) return this.crew.say('Engineering', `Not enough energy for the ray. We need ${cost}, we have ${Math.floor(this.energy)}.`);
     const target = this.#weaponsTarget();
@@ -601,6 +620,68 @@ export class Game {
       return this.crew.say('Helm', "Target's outside the ray's arc. Bringing us about. The ray fires when we're lined up.");
     }
     return this.#chargeRay(target);
+  }
+
+  /** A salvo from the bow tubes. Torpedoes home on the target and hit hard, but point defense can stop them. */
+  #orderTorpedoes() {
+    const cfg = CONFIG.warship.torpedo;
+    if (this.systems.weapons < 0.1) return this.crew.say('Weapons', 'Torpedo control is offline. We need engineering on it.');
+    if (this.torpedoStock <= 0) return this.crew.say('Weapons', "We're out of torpedoes, Captain. Derelicts may carry some, or we restock at the next jump.");
+    if (this.tubes.reload > 0) return this.crew.say('Weapons', `Tubes reloading, ${Math.ceil(this.tubes.reload)} seconds.`);
+    const target = this.#weaponsTarget();
+    if (!target) return this.crew.say('Weapons', 'No target for the torpedoes, Captain.');
+    if (target.kind === 'satellite') return this.crew.say('Weapons', "That's a derelict, Captain. Not worth a torpedo.");
+    const w = this.warship;
+    const dist = target.position.distanceTo(w.position);
+    if (dist > cfg.range) return this.crew.say('Weapons', `Target's out of torpedo range at ${km(dist)}. Get us inside ${km(cfg.range)}.`);
+    this.target = target;
+    const count = Math.min(cfg.salvo, this.torpedoStock);
+    const damage = this.shipStats.torpedoDamage * this.#pf('damage');
+    for (let i = 0; i < count; i++) {
+      const tube = w.model.torpedoTubes[i % w.model.torpedoTubes.length];
+      const origin = w.object.localToWorld(tube.position.clone());
+      const dir = tube.direction.clone().transformDirection(w.object.matrixWorld);
+      const t = new Torpedo(origin, dir, target, this.colors.ice, { spec: CONFIG.ourTorpedo, hostile: false, damage });
+      this.scene.add(t.object);
+      this.torpedoes.push(t);
+      this.trails.attach(t, { color: this.colors.ice.clone().multiplyScalar(0.5), width: 1.2, offset: new THREE.Vector3(0, 0, -3.5) });
+      this.effects.flash(origin, this.colors.ice, 10, 0.25, 1.5);
+    }
+    this.torpedoStock -= count;
+    this.tubes.total = (cfg.reload * this.#pf('reload')) / (0.4 + 0.6 * this.systems.weapons);
+    this.tubes.reload = this.tubes.total;
+    this.sound.torpedo();
+    this.shake = Math.max(this.shake, 0.2);
+    const left = this.torpedoStock === 0 ? 'That was our last.' : `${this.torpedoStock} left.`;
+    return this.crew.say('Weapons', `${count > 1 ? 'Torpedoes' : 'Torpedo'} away! ${left}`);
+  }
+
+  /** The helm weaves for a few seconds: half the shots and torpedoes aimed at us miss, but our aim suffers. */
+  #orderEvasive() {
+    const e = this.evasive;
+    if (e.t > 0) return undefined;
+    if (e.cooldown > 0) return this.crew.say('Helm', `The helm needs a moment, ${Math.ceil(e.cooldown)} seconds.`);
+    if (this.systems.engines < 0.2) return this.crew.say('Helm', "The engines are too weak to evade, Captain.");
+    e.t = CONFIG.evasive.duration;
+    e.phase = rand(0, Math.PI * 2);
+    this.ray.pending = 0;
+    return this.crew.say('Helm', 'Evasive maneuvers! Hold on to something!');
+  }
+
+  /** Repair crews patch the hull and the worst-hit system over a few seconds, for some energy. */
+  #orderDamageControl() {
+    const d = this.dc;
+    const cfg = CONFIG.damageControl;
+    if (d.t > 0) return this.crew.say('Damage control', 'Teams are already working on it, Captain.');
+    if (d.cooldown > 0) return this.crew.say('Damage control', `Teams are regrouping, ${Math.ceil(d.cooldown)} seconds.`);
+    const w = this.warship;
+    const worst = SYSTEMS.reduce((a, b) => (this.systems[b.id] < this.systems[a.id] ? b : a));
+    if (w.hull >= w.maxHull - 1 && this.systems[worst.id] >= 0.99) return this.crew.say('Damage control', "Nothing to patch, Captain. She's in one piece.");
+    if (this.energy < cfg.cost) return this.crew.say('Engineering', `Damage control needs ${cfg.cost} energy. We have ${Math.floor(this.energy)}.`);
+    this.energy -= cfg.cost;
+    d.t = cfg.duration;
+    d.system = worst.id;
+    return this.crew.say('Damage control', `Damage control teams on it. Patching the hull and the ${worst.name.toLowerCase()}.`);
   }
 
   #chargeRay(target) {
@@ -771,6 +852,7 @@ export class Game {
       w.update(dt, this.time);
       this.#weapons(dt);
       this.#pointDefense(dt);
+      this.#flagshipPointDefense(dt);
       this.#shipSystems(dt);
       this.#launches();
     } else {
@@ -823,8 +905,22 @@ export class Game {
     const w = this.warship;
     const manual = this.mode === 'bridge' && !this.engineering.isOpen;
     const h = manual ? this.input.readHelm() : { yaw: 0, pitch: 0, throttle: 0 };
-    if (h.yaw || h.pitch) this.course = null;
+    if ((h.yaw || h.pitch) && this.course) {
+      this.course = null;
+      this.crew.say('Helm', 'Manual helm, aye.', { speak: false });
+    }
     if (h.throttle) w.throttle = clamp(w.throttle + h.throttle * dt * 0.35, -0.25, 1);
+    const slider = manual ? this.input.takeThrottle() : null;
+    if (slider !== null) w.throttle = slider;
+
+    // Evasive maneuvers: weave in yaw and pitch at speed. A course resumes afterwards.
+    if (this.evasive.t > 0) {
+      const k = this.time * 1.3 + this.evasive.phase;
+      w.yawCommand = Math.sin(k);
+      w.pitchCommand = Math.sin(k * 0.7 + 1) * 0.6;
+      w.throttle = Math.max(w.throttle, 0.75);
+      return;
+    }
 
     if (!this.course) {
       w.yawCommand = h.yaw;
@@ -868,6 +964,8 @@ export class Game {
     const c = this.cannon;
     const cfg = CONFIG.warship.cannon;
     c.reload = Math.max(0, c.reload - dt);
+    this.tubes.reload = Math.max(0, this.tubes.reload - dt);
+    const spread = cfg.spread * (this.evasive.t > 0 ? 2.5 : 1);
     const target = this.target && !this.target.dead && this.target.kind !== 'satellite' ? this.target : null;
     if (target) {
       const dist = target.position.distanceTo(w.position);
@@ -882,7 +980,7 @@ export class Game {
           for (let b = 0; b < t.muzzles.length; b++) {
             const origin = w.muzzle(t, b);
             const dir = lead.clone().sub(origin).normalize();
-            dir.add(randomUnit(new THREE.Vector3()).multiplyScalar(cfg.spread)).normalize();
+            dir.add(randomUnit(new THREE.Vector3()).multiplyScalar(spread)).normalize();
             this.bolts.fire(origin, dir.multiplyScalar(cfg.boltSpeed).add(w.velocity), {
               look: 'battery',
               damage: this.shipStats.cannonDamage * this.#pf('damage'),
@@ -918,7 +1016,7 @@ export class Game {
       r.pending -= dt;
       const t = r.target;
       if (!t || t.dead) r.pending = 0;
-      else if (this.#inRayArc(t) && t.position.distanceTo(w.position) < cfg.range) {
+      else if (this.evasive.t <= 0 && this.#inRayArc(t) && t.position.distanceTo(w.position) < cfg.range) {
         if (this.energy >= this.shipStats.rayCost && r.cooldown <= 0) this.#chargeRay(t);
         else r.pending = 0;
       }
@@ -928,6 +1026,7 @@ export class Game {
     if (r.phase === 'charge') {
       r.t -= dt;
       glow = 0.25 + 2.5 * (1 - r.t / cfg.charge);
+      this.effects.implode(em.group.getWorldPosition(this._v), 40, 3, em.color, 0.5);
       if (r.t <= 0) {
         r.phase = 'fire';
         r.t = cfg.duration;
@@ -969,8 +1068,12 @@ export class Game {
     const flicker = 1 + Math.sin(this.time * 70) * 0.12;
     b.core.scale.set(2.4 * flicker, 2.4 * flicker, length);
     b.glow.scale.set(9 * flicker, 9 * flicker, length);
+    b.glow.material.uniforms.uTime.value = this.time;
+    b.glow.material.uniforms.uLength.value = length;
     b.impact.position.set(0, 0, -length);
     b.impact.scale.setScalar(90 * flicker);
+    // Whatever it touches boils.
+    if (t && Math.random() < 0.6) this.effects.fire(end.clone().addScaledVector(dir, -rand(0, 20)), rand(14, 30), rand(0.5, 0.9));
 
     const share = (this.shipStats.rayDamage * this.#pf('damage') * dt) / cfg.duration;
     if (t && this.#inRayArc(t)) {
@@ -1001,8 +1104,48 @@ export class Game {
       depthWrite: false,
       side: THREE.DoubleSide,
     }));
-    const core = make(this.colors.ice.clone().lerp(new THREE.Color(1, 1, 1), 0.6).multiplyScalar(9), 1);
-    const glow = make(this.colors.ice.clone().multiplyScalar(1.6), 0.5);
+    const core = make(this.colors.ice.clone().lerp(new THREE.Color(1, 1, 1), 0.6).multiplyScalar(4.5), 1);
+    // The sheath: plasma twisting in a helix and racing out along the beam, brightest down its middle.
+    const glow = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uColor: { value: this.colors.ice.clone().multiplyScalar(0.8) },
+        uTime: { value: 0 },
+        uLength: { value: 1 },
+      },
+      vertexShader: /* glsl */ `
+        varying float vAlong;
+        varying float vAround;
+        varying float vFacing;
+        void main() {
+          vAlong = -position.z; // 0 at the emitter, 1 at the far end
+          vAround = atan(position.y, position.x);
+          vec3 n = normalize(normalMatrix * normal);
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vFacing = abs(dot(n, normalize(-mv.xyz)));
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        uniform float uTime;
+        uniform float uLength;
+        varying float vAlong;
+        varying float vAround;
+        varying float vFacing;
+        void main() {
+          float s = vAlong * uLength; // meters from the emitter
+          float helix = sin(vAround * 3.0 + s * 0.09 - uTime * 38.0) * 0.5 + 0.5;
+          float surge = sin(s * 0.025 - uTime * 22.0) * 0.5 + 0.5;
+          float body = pow(vFacing, 1.6);
+          float tip = 1.0 - smoothstep(0.92, 1.0, vAlong);
+          gl_FragColor = vec4(uColor * body * tip * (0.35 + 0.65 * helix) * (0.75 + 0.5 * surge), 1.0);
+        }
+      `,
+    }));
     const impact = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTexture(),
       color: this.colors.ice.clone().multiplyScalar(5),
@@ -1024,6 +1167,34 @@ export class Game {
     if (this.time - this.lastHit > CONFIG.warship.shieldDelay) {
       w.shield = Math.min(w.maxShield, w.shield + s.shieldRegen * this.#pf('shieldRegen') * this.systems.shields * dt);
       if (w.shield > w.maxShield * 0.5) this.alerts.shieldsDown = false;
+    }
+    const e = this.evasive;
+    if (e.t > 0) {
+      e.t -= dt;
+      if (e.t <= 0) {
+        e.cooldown = e.total = CONFIG.evasive.cooldown;
+        this.crew.say('Helm', 'Steady as she goes.', { speak: false });
+      }
+    } else {
+      e.cooldown = Math.max(0, e.cooldown - dt);
+    }
+    const d = this.dc;
+    if (d.t > 0) {
+      const cfg = CONFIG.damageControl;
+      const step = Math.min(dt, d.t);
+      d.t -= dt;
+      w.hull = Math.min(w.maxHull, w.hull + (cfg.hull / cfg.duration) * step);
+      this.systems[d.system] = Math.min(1, this.systems[d.system] + (cfg.system / cfg.duration) * step);
+      if (w.hull > w.maxHull * 0.6) this.alerts.hullHalf = false;
+      if (w.hull > w.maxHull * 0.35) this.alerts.hullCritical = false;
+      if (d.t <= 0) {
+        d.cooldown = d.total = cfg.cooldown;
+        const sys = SYSTEMS.find((x) => x.id === d.system);
+        this.crew.say('Damage control', `Repairs done. Hull at ${Math.round((w.hull / w.maxHull) * 100)} percent, ${sys.name.toLowerCase()} at ${Math.round(this.systems[d.system] * 100)}.`);
+        if (this.engineering.isOpen) this.engineering.refresh(this.systems);
+      }
+    } else {
+      d.cooldown = Math.max(0, d.cooldown - dt);
     }
     // Engine hum on the bridge follows speed.
     if (this.mode === 'bridge') this.sound.setThrust(0.15 + Math.min(1, w.speed / CONFIG.warship.maxSpeed) * 0.35);
@@ -1087,6 +1258,12 @@ export class Game {
         this.effects.flash(shot.origin, this.colors.hostile, 8, 0.12, 2);
       }
       if (result.launch) this.#launchFighters(2);
+      if (result.retreat) {
+        this.sound.alert();
+        this.crew.say('Sensors', "The flagship is breaking off! It's making a run for it!");
+        this.ui.banner('Flagship retreating', 'Chase it down, or knock out its engines');
+      }
+      if (result.rejoin && !f.enginesDown) this.crew.say('Sensors', 'The flagship is turning back to fight!');
       f.update(dt, this.time);
     } else if (f && !f.dead) {
       f.update(dt, this.time);
@@ -1106,6 +1283,7 @@ export class Game {
     }
     for (const t of this.torpedoes) t.update(dt);
     this.#updateFires(dt);
+    this.#updateHullFires(dt);
     this.#updateWrecks(dt);
 
     for (const d of this.drones) {
@@ -1177,7 +1355,7 @@ export class Game {
     this.pdTimer = 1 / (cfg.rate * this.#pf('pointDefense') * (0.4 + 0.6 * this.systems.weapons));
     const reach = (cfg.range + 260) ** 2;
     const threats = [];
-    for (const t of this.torpedoes) if (!t.dead && t.position.distanceToSquared(w.position) < reach) threats.push(t);
+    for (const t of this.torpedoes) if (!t.dead && t.hostile && t.position.distanceToSquared(w.position) < reach) threats.push(t);
     for (const d of this.drones) if (!d.dead && d.position.distanceToSquared(w.position) < reach) threats.push(d);
     if (!threats.length) return;
     let fired = false;
@@ -1208,6 +1386,29 @@ export class Game {
       }
     }
     if (fired && this.mode === 'bridge') this.sound.pd();
+  }
+
+  /**
+   * Fires break out across a badly damaged capital ship: one below 75% hull, three below half, six below
+   * a quarter. Repairs put them out again.
+   */
+  #updateHullFires(dt) {
+    for (const ship of [this.warship, this.flagship]) {
+      if (!ship || ship.dead) continue;
+      const frac = ship.hull / ship.maxHull;
+      const want = frac < 0.25 ? 6 : frac < 0.5 ? 3 : frac < 0.75 ? 1 : 0;
+      ship.fires ??= [];
+      while (ship.fires.length < want) ship.fires.push({ local: ship.model.hullPoint(ship === this.warship && Math.random() < 0.7), timer: 0 });
+      if (ship.fires.length > want) ship.fires.length = want;
+      for (const fire of ship.fires) {
+        fire.timer -= dt;
+        if (fire.timer > 0) continue;
+        fire.timer = rand(0.2, 0.4);
+        const at = ship.object.localToWorld(this._v.copy(fire.local));
+        this.effects.fire(at, rand(7, 13), rand(1, 1.8));
+        if (Math.random() < 0.3) this.effects.sparkBurst(at, 3, this.colors.flareHot, 15);
+      }
+    }
   }
 
   /** Fires and sparks at the flagship's knocked-out parts. */
@@ -1467,10 +1668,13 @@ export class Game {
     sat.salvaged = true;
     this.report.salvage += 1;
     this.energy = Math.min(this.shipStats.maxEnergy, this.energy + CONFIG.salvage.energy);
+    const torpedoes = Math.min(CONFIG.salvage.torpedoes, this.shipStats.torpedoes - this.torpedoStock);
+    this.torpedoStock += torpedoes;
     this.score += CONFIG.salvage.score;
     this.sound.salvage();
     this.#popup(sat.position, `+${CONFIG.salvage.energy} energy`, this.palette.energy);
-    this.crew.say(byScout ? 'Flight deck' : 'Engineering', `Salvaged power cells from ${sat.name}. Energy plus ${CONFIG.salvage.energy}.`);
+    const haul = torpedoes ? `power cells and ${torpedoes} torpedoes` : 'power cells';
+    this.crew.say(byScout ? 'Flight deck' : 'Engineering', `Salvaged ${haul} from ${sat.name}. Energy plus ${CONFIG.salvage.energy}.`);
   }
 
   // ---------- Collisions and damage ----------
@@ -1498,11 +1702,20 @@ export class Game {
           }
         }
         if (b.dead) continue;
+        for (const t of this.torpedoes) {
+          if (t.dead || t.hostile || !segmentHitsSphere(b.previous, b.position, t.position, t.radius + 2)) continue;
+          b.dead = true;
+          t.hp -= b.damage;
+          if (t.hp <= 0) this.#destroyTorpedo(t, true);
+          break;
+        }
+        if (b.dead) continue;
         if (!w.dead && b.position.distanceToSquared(w.position) < 300 * 300) {
           for (const c of w.colliders) {
             if (segmentHitsSphere(b.previous, b.position, c.position, c.radius)) {
               b.dead = true;
-              this.#damageWarship(b.damage, b.position.clone());
+              // Evading, many shots go wide.
+              if (this.evasive.t <= 0 || Math.random() >= CONFIG.evasive.missChance) this.#damageWarship(b.damage, b.position.clone());
               break;
             }
           }
@@ -1530,7 +1743,7 @@ export class Game {
         }
         for (const t of this.torpedoes) {
           if (b.dead) break;
-          if (t.dead || !segmentHitsSphere(b.previous, b.position, t.position, t.radius + (b.look === 'pd' ? 2 : 0))) continue;
+          if (t.dead || !t.hostile || !segmentHitsSphere(b.previous, b.position, t.position, t.radius + (b.look === 'pd' ? 2 : 0))) continue;
           b.dead = true;
           t.hp -= b.look === 'battery' ? 99 : b.damage;
           if (t.hp <= 0) this.#destroyTorpedo(t, true);
@@ -1596,7 +1809,15 @@ export class Game {
 
     for (const t of this.torpedoes) {
       if (t.dead) continue;
-      if (!w.dead && t.position.distanceToSquared(w.position) < 300 * 300 && w.hitSphere(t.position, 3)) {
+      if (!t.hostile) {
+        if (this.#ourTorpedoStrike(t)) continue;
+      } else if (!t.missed && !w.dead && t.position.distanceToSquared(w.position) < 300 * 300 && w.hitSphere(t.position, 3)) {
+        // Evading, a torpedo can overshoot: it loses its lock and flies on.
+        if (this.evasive.t > 0 && Math.random() < CONFIG.evasive.missChance) {
+          t.missed = true;
+          t.target = null;
+          continue;
+        }
         this.#torpedoHit(t);
         continue;
       }
@@ -1841,6 +2062,69 @@ export class Game {
     if (this.course?.entity === c) this.course = null;
   }
 
+  /**
+   * Our torpedo reaching something: the flagship (or the part it was aimed at) or a corvette. It only
+   * goes off on a fighter that it was aimed at, so fighters crossing its path don't waste it.
+   */
+  #ourTorpedoStrike(t) {
+    const f = this.flagship && !this.flagship.dead ? this.flagship : null;
+    let victim = null;
+    if (f && t.position.distanceToSquared(f.position) < 300 * 300 && f.hitSphere(t.position, 4)) victim = f;
+    victim ??= this.corvettes.find((c) => !c.dead && t.position.distanceToSquared(c.position) < 90 * 90 && c.hitSphere(t.position, 3));
+    if (t.target?.kind === 'fighter' && !t.target.dead && t.position.distanceTo(t.target.position) < t.target.radius + 4) victim = t.target;
+    if (!victim) return false;
+    t.dead = true;
+    const at = t.position.clone();
+    this.effects.explosion(at, 46, { debris: 6 });
+    this.#playAt('explode', at, 1);
+    this.#shakeFrom(at, 0.5);
+    if (victim === f) {
+      const part = t.target?.kind === 'subsystem' && t.target.ship === f && !t.target.destroyed ? t.target : null;
+      this.#damageFlagship(f.shield > 0 ? t.damage * 0.5 : t.damage, at, part);
+    } else if (victim.kind === 'corvette') {
+      this.#damageCorvette(victim, t.damage, at);
+    } else {
+      this.#hitDrone(victim, t.damage, at);
+    }
+    return true;
+  }
+
+  /**
+   * The flagship's point defense shoots at our torpedoes. It runs off the gun batteries, so every battery
+   * knocked out weakens it, and with all of them gone it falls silent.
+   */
+  #flagshipPointDefense(dt) {
+    const f = this.flagship;
+    if (!f || f.dead || f.state === 'dormant') return;
+    const guns = f.parts.filter((p) => p.type === 'gun');
+    const working = guns.filter((p) => !p.destroyed).length;
+    if (!working) return;
+    f.pdTimer -= dt;
+    if (f.pdTimer > 0) return;
+    const cfg = CONFIG.flagship.pointDefense;
+    f.pdTimer = 1 / (cfg.rate * (working / guns.length));
+    const reach = (cfg.range + 300) ** 2;
+    const threats = this.torpedoes.filter((t) => !t.dead && !t.hostile && t.position.distanceToSquared(f.position) < reach);
+    if (!threats.length) return;
+    for (const m of f.model.pdMounts) {
+      const origin = f.object.localToWorld(m.position.clone());
+      const normal = m.normal.clone().transformDirection(f.object.matrixWorld);
+      let best = null;
+      let bestDist = Infinity;
+      for (const t of threats) {
+        const to = t.position.clone().sub(origin);
+        const d = to.length();
+        if (d > cfg.range || to.dot(normal) < -0.25 * d || d >= bestDist) continue;
+        best = t;
+        bestDist = d;
+      }
+      if (!best) continue;
+      const dir = best.position.clone().addScaledVector(best.velocity, bestDist / cfg.boltSpeed).sub(origin).normalize();
+      dir.add(randomUnit(new THREE.Vector3()).multiplyScalar(cfg.spread)).normalize();
+      this.bolts.fire(origin, dir.multiplyScalar(cfg.boltSpeed).add(f.velocity), { look: 'pdHostile', hostile: true, damage: 1, life: (cfg.range / cfg.boltSpeed) * 1.2 });
+    }
+  }
+
   #torpedoHit(t) {
     t.dead = true;
     this.effects.explosion(t.position, 38, { debris: 4 });
@@ -1856,6 +2140,13 @@ export class Game {
     t.dead = true;
     this.effects.explosion(t.position, 16, { debris: 0, light: false });
     this.#playAt('explode', t.position, 0.4);
+    if (!t.hostile) {
+      if (shotDown && this.time - (this.alerts.ourTorpedoDownAt ?? -99) > 8) {
+        this.alerts.ourTorpedoDownAt = this.time;
+        this.crew.say('Weapons', 'Their point defense got one of our torpedoes.', { speak: false });
+      }
+      return;
+    }
     if (!shotDown) return;
     this.report.torpedoes += 1;
     this.#addScore(100, t.position);
@@ -1995,6 +2286,7 @@ export class Game {
       this.report.hullLost += hullDamage;
       this.effects.impact(at, this.colors.flareHot);
       if (this.mode === 'bridge') {
+        this.flicker = Math.max(this.flicker, Math.min(0.8, 0.2 + hullDamage / 60));
         this.hurt = Math.min(1, this.hurt + Math.min(0.5, hullDamage / 40));
         this.shake = Math.max(this.shake, Math.min(1, hullDamage / 25));
         this.sound.hit();
@@ -2249,6 +2541,7 @@ export class Game {
     if (!f || f.dead) return 'The flagship is breaking up';
     if (!this.flagshipKnown) return 'Find the enemy flagship. Send out recon to search.';
     const dist = km(f.position.distanceTo(this.warship.position));
+    if (f.state === 'retreat') return `The flagship is running! Chase it, or knock out its engines · ${dist}`;
     if (f.shield > 0) return `Break the flagship's shields · ${dist}`;
     return `Destroy the flagship: hit its guns, engines or hangar · ${dist}`;
   }
@@ -2269,6 +2562,20 @@ export class Game {
         state: r.phase !== 'idle' || r.pending > 0 ? 'active' : r.cooldown > 0 ? 'cooling'
           : this.energy < this.shipStats.rayCost || this.systems.weapons < 0.25 ? 'unavailable' : hostileTarget ? 'ready' : 'unavailable',
         progress: r.cooldown > 0 ? 1 - r.cooldown / r.cooldownTotal : Math.min(1, this.energy / this.shipStats.rayCost),
+      },
+      torpedoes: {
+        state: this.torpedoStock <= 0 || this.systems.weapons < 0.1 ? 'unavailable' : this.tubes.reload > 0 ? 'cooling' : hostileTarget ? 'ready' : 'unavailable',
+        progress: this.tubes.reload > 0 ? 1 - this.tubes.reload / this.tubes.total : 1,
+      },
+      evasive: {
+        state: this.evasive.t > 0 ? 'active' : this.evasive.cooldown > 0 ? 'cooling' : 'ready',
+        progress: this.evasive.t > 0 ? this.evasive.t / CONFIG.evasive.duration : this.evasive.cooldown > 0 ? 1 - this.evasive.cooldown / this.evasive.total : 1,
+      },
+      'damage-control': {
+        state: this.dc.t > 0 ? 'active' : this.dc.cooldown > 0 ? 'cooling'
+          : this.energy < CONFIG.damageControl.cost || (w.hull >= w.maxHull - 1 && !SYSTEMS.some((s) => this.systems[s.id] < 0.99)) ? 'unavailable'
+            : w.hull < w.maxHull * 0.4 ? 'alert' : 'ready',
+        progress: this.dc.t > 0 ? this.dc.t / CONFIG.damageControl.duration : this.dc.cooldown > 0 ? 1 - this.dc.cooldown / this.dc.total : 1,
       },
       recon: { state: this.scoutsDocked > 0 ? 'ready' : 'unavailable' },
       recall: { state: this.scouts.some((s) => !s.piloted && s.state !== 'return' && s.state !== 'docking') ? 'ready' : 'unavailable' },
@@ -2325,6 +2632,7 @@ export class Game {
         course,
         commands: this.#commandStates(),
         power: this.power,
+        torpedoes: { stock: this.torpedoStock, max: this.shipStats.torpedoes },
       });
     } else if (this.pilot) {
       const p = this.pilot;
@@ -2358,10 +2666,15 @@ export class Game {
     this.scene.backgroundIntensity = exposure;
 
     const pilot = this.mode === 'pilot' && this.pilot && !this.pilot.dead;
+    this.flare.update(dt, cam, this.sunDirection, this.state !== 'warp' && this.#sunClear(cam));
     const velocity = pilot ? this.pilot.velocity : this.warship.velocity;
     this.dust.update(cam.position, velocity);
     if (!pilot) this.bridgeCrew.update(dt, this.time);
-    this.interiorLight.intensity = pilot ? 0.35 : this.state === 'title' || this.state === 'gameover' ? 0 : 2;
+    // A hit makes the bridge's screens and lights stutter.
+    this.flicker = Math.max(0, this.flicker - dt);
+    const stutter = this.flicker > 0 && Math.random() < 0.45 ? rand(0.05, 0.5) : 1;
+    for (const g of this.bridge.userData.glows) g.material.color.copy(g.color).multiplyScalar(stutter);
+    this.interiorLight.intensity = (pilot ? 0.35 : this.state === 'title' || this.state === 'gameover' ? 0 : 2) * stutter;
     this.interiorLight.distance = pilot ? 4 : 24;
     this.interiorLight.position.set(0, pilot ? 0.3 : 2.6, pilot ? -0.4 : 4);
 
@@ -2404,6 +2717,38 @@ export class Game {
     if (this.mapOpen) this.#drawMap();
   }
 
+  /** Whether a straight line from the camera to the sun is clear of the planet, rocks, ships and the bridge's own walls. */
+  #sunClear(cam) {
+    const d = this.sunDirection;
+    const o = cam.position;
+    const blocks = (center, radius) => {
+      const x = center.x - o.x;
+      const y = center.y - o.y;
+      const z = center.z - o.z;
+      const along = x * d.x + y * d.y + z * d.z;
+      const dist2 = x * x + y * y + z * z;
+      // Ahead of us and close enough to the line, unless we're inside it.
+      return along > 0 && dist2 > radius * radius && dist2 - along * along < radius * radius;
+    };
+    if (this.planet && blocks(this.planet.group.position, this.planet.radius)) return false;
+    for (const r of this.field.rocks) if (!r.dead && blocks(r.position, r.radius * 0.85)) return false;
+    for (const s of [this.warship, this.flagship, ...this.corvettes]) {
+      if (!s || s.dead) continue;
+      for (const c of s.colliders) if (blocks(c.position, c.radius)) return false;
+    }
+    const onBridge = this.mode === 'bridge' && !this.photo && !this.warship.dead && (this.state === 'playing' || this.state === 'paused');
+    if (!onBridge) return true;
+    // On the bridge the sun has to be in a window: find where the line leaves the room (bridge.js layout).
+    const l = this._sunV.copy(d).applyQuaternion(this.warship.model.bridgeAnchor.getWorldQuaternion(this._sunQ).invert());
+    const tx = l.x === 0 ? Infinity : (l.x > 0 ? 15 : -15) / l.x;
+    const ty = l.y === 0 ? Infinity : (l.y > 0 ? 3.4 : -4.8) / l.y;
+    const tz = l.z === 0 ? Infinity : (l.z > 0 ? 14 : -6) / l.z;
+    const t = Math.min(tx, ty, tz);
+    if (t === ty) return false; // ceiling or floor
+    if (t === tz) return l.z < 0 && l.y * t > -3.1; // the forward window, above the sill
+    return l.y * t > -3.1 && l.z * t < 10; // a side window
+  }
+
   #hudContacts() {
     const list = [];
     const t = this.target;
@@ -2423,7 +2768,7 @@ export class Game {
     }
     const w = this.warship.position;
     for (const tp of this.torpedoes) {
-      if (!tp.dead && tp.position.distanceTo(w) < 3500) list.push({ position: tp.position, kind: 'torpedo', label: 'TORPEDO', radius: 4, hostile: true });
+      if (!tp.dead && tp.hostile && tp.position.distanceTo(w) < 3500) list.push({ position: tp.position, kind: 'torpedo', label: 'TORPEDO', radius: 4, hostile: true });
     }
     for (const s of this.scouts) {
       if (!s.dead && !s.piloted) list.push({ position: s.position, kind: 'scout', label: s.name.replace('Recon ', 'R'), radius: 7, hostile: false });
@@ -2460,7 +2805,7 @@ export class Game {
     }
     for (const d of this.drones) if (d.detected) contacts.push({ kind: 'fighter', position: d.position });
     for (const c of this.corvettes) if (!c.dead && this.#isKnown(c)) contacts.push({ kind: 'corvette', position: c.position });
-    for (const t of this.torpedoes) if (!t.dead) contacts.push({ kind: 'torpedo', position: t.position });
+    for (const t of this.torpedoes) if (!t.dead) contacts.push({ kind: t.hostile ? 'torpedo' : 'ourTorpedo', position: t.position });
     for (const s of this.satellites) if (s.discovered) contacts.push({ kind: 'satellite', position: s.position, salvaged: s.salvaged });
     for (const p of this.pickups.items) if (explored(p.position)) contacts.push({ kind: 'energy', position: p.position });
     this.map.draw({

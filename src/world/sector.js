@@ -95,10 +95,22 @@ export function generateSector(index, seed) {
       size: between(0.45, 0.75),
       seed: between(0, 50),
     },
-    planet: {
-      position: planetDir.multiplyScalar(between(30000, 38000)),
-      radius: between(8000, 11500),
-      seed: between(1, 9),
-    },
+    // A rocky world nearby, or a ringed gas giant farther out.
+    planet: rng() < 0.45
+      ? {
+        type: 'gas',
+        position: planetDir.multiplyScalar(between(56000, 64000)),
+        radius: between(13000, 16500),
+        seed: between(1, 9),
+        palette: rng(),
+        tilt: between(0.25, 0.6),
+        rings: rng() < 0.85,
+      }
+      : {
+        type: 'rocky',
+        position: planetDir.multiplyScalar(between(30000, 38000)),
+        radius: between(8000, 11500),
+        seed: between(1, 9),
+      },
   };
 }

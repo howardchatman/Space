@@ -20,7 +20,8 @@ python3 -m http.server 8000
 ## How a sector plays
 
 1. **Arrive.** The warship drops out of warp at the edge of a 14 km sector of asteroid clusters,
-   derelict satellites, enemy fighter patrols and a planet on the horizon.
+   derelict satellites, enemy fighter patrols and a planet on the horizon: a rocky world, or a gas
+   giant with rings.
 2. **Search.** The enemy flagship is far away and not on your scanners. **Send out the recon**: four
    scouts launch from the hangar, fan out ahead and reveal everything near them. The tactical map shows
    what's been explored; switch it to **Send recon** and tap a point to send the nearest scout there.
@@ -31,9 +32,15 @@ python3 -m http.server 8000
    (charges from the bow emitter; costs 50 energy and only fires within its arc off the bow, so the helm
    turns the ship until it can). The flagship's **shields** soak up fire first. Once they're down, target
    its **guns** to stop them shooting, its **engines** to slow it, or its **hangar** to stop fighters.
+   **Torpedoes** hit hard (half as hard on shields), but you only carry six per sector and the flagship's
+   point defense shoots them down. Its point defense runs off its gun batteries, so knock those out first.
+   Badly hurt, the flagship **breaks off and runs**: chase it, or take out its engines so it can't.
 5. **Keep her running.** Hits drain shields, then hull, and wear down engines, weapons, shields and sensors.
-   **Divert power** to weapons, shields or engines for the situation. At the **engineering** station, route
-   power through the conduits to repair a system.
+   Fires break out across a badly damaged hull. **Evasive maneuvers** make about half the incoming fire
+   miss for a few seconds (but spoil your own aim). **Divert power** to weapons, shields or engines for the
+   situation. **Damage control** sends repair crews to patch the hull and the worst system for some
+   energy; at the **engineering** station, route power through the conduits for a bigger repair.
+   Derelicts hold power cells and spare torpedoes.
 6. **Jump.** The flagship breaks in two. **Engage warp**: you get an after-action report with a bonus for
    speed and a clean hull, pick a refit, and arrive in a tougher sector with a new sky.
 
@@ -48,6 +55,8 @@ Every order works three ways: the buttons along the bottom of the bridge, a key,
 | --- | --- | --- |
 | Fire cannons | 1 | "Fire the cannons", "open fire" |
 | Death ray | 2 | "Fire the death ray" |
+| Torpedoes | 9 | "Fire torpedoes", "torpedoes away" |
+| Evasive maneuvers | Z | "Evasive maneuvers", "take evasive action" |
 | Send recon | 3 | "Send out the recon" |
 | Recall recon | 4 | "Recall the scouts" |
 | Set course for the target | C | "Set course" |
@@ -58,6 +67,7 @@ Every order works three ways: the buttons along the bottom of the bridge, a key,
 | Balance power | 8 | "Balance power" |
 | Fly a scout / back to bridge | B | "I'll fly", "back to the ship" |
 | Engineering | G | "Engineering", "repair" |
+| Damage control | H | "Damage control", "patch the hull" |
 | Tactical map | Tab | "Show the map" |
 | Ahead full / all stop | W / X | "Ahead full", "all stop" |
 | Warp | J | "Engage warp" |
@@ -75,8 +85,8 @@ listen; use the buttons and keys there.
 | --- | --- | --- |
 | Look around | Drag the view | Drag the view |
 | Pick a target | Click its bracket | Tap its bracket |
-| Turn / climb | A D / R F (or arrows) | Set course from a target or the map |
-| Throttle | W / S | Ahead full / All stop |
+| Turn / climb | A D / R F (or arrows) | Drag the helm pad (bottom right), or set a course |
+| Throttle | W / S | The speed slider next to the helm pad, or Ahead full / All stop |
 | Set a course anywhere | Click the tactical map | Tap the tactical map |
 | Send a scout somewhere | Map in Send recon mode, click a point | Map in Send recon mode, tap a point |
 | Divert power | 5–8, or the power buttons | The power buttons under Energy |
@@ -97,8 +107,12 @@ listen; use the buttons and keys there.
 - **Stars** follow a real brightness distribution, crowd toward the Milky Way and are colored by temperature.
 - **The Milky Way** is a procedural band with a bright core and dark dust lanes.
 - **Each sector's planet** is generated and baked into cube maps: continents, biomes, ice caps, clouds,
-  ocean glint, city lights on the night side and an atmosphere that glows at the limb.
-- **The sun** is a half-degree disc with glare; looking toward it dims the faint sky.
+  ocean glint, city lights on the night side and an atmosphere that glows at the limb. Some sectors have
+  a gas giant instead, with turbulent cloud bands, a great storm and a ring system: the rings throw their
+  shadow across the clouds and the planet throws its shadow across the rings.
+- **The sun** is a half-degree disc with glare; looking toward it dims the faint sky, and when nothing
+  blocks it (the bridge roof, a ship, a rock, the planet) it throws a lens flare across the view.
+- **A faint fill light** from the starfield keeps the night sides of the ships from going pure black.
 - **Each sector's sky** has its own nebula, baked into the background with the Milky Way.
 - **Lighting** is harsh and one-directional, as in space. The ships, the bridge and the scout cockpit are all
   lit by the same sun, so light moves across them as you turn, and the sun casts shadows: turrets, masts
@@ -106,7 +120,10 @@ listen; use the buttons and keys there.
 - **The warships** have shader-drawn hull plating with decks of lit windows, working turrets, engine
   plumes, a turning radar dish, deck lights and navigation lights. Shields ripple where they're hit.
 - **Explosions** are billowing fireballs that cool into smoke, with shock rings and burning hull shards.
-  A destroyed capital ship breaks in two and the halves drift apart, burning along the break.
+  A destroyed capital ship breaks in two and the halves drift apart, burning along the break. Damaged
+  ships burn on deck; on the bridge, hits make the screens and lights stutter.
+- **The death ray** draws sparks into the emitter as it charges, then fires a beam of twisting plasma that
+  sets its target boiling.
 - **Small craft** leave glowing engine trails; **the bridge crew** sit at their consoles and turn to report.
 - **Rendering** is HDR with bloom and a filmic tone curve.
 
@@ -133,10 +150,10 @@ src/
   upgrades.js            warship refits between sectors
   audio.js               synthesized sound effects (Web Audio, no audio files)
   engine/renderer.js     WebGL renderer, bloom and tone mapping
-  world/                 sector layout, sky, sun, planet, asteroids, space dust, noise
+  world/                 sector layout, sky, sun, rocky planets, gas giants, asteroids, space dust, noise
   entities/              capital ships (model, flight, flagship AI), corvettes, torpedoes, scouts, fighters,
                          satellites, bolts, pickups
-  fx/                    explosions, shields, engine trails, shadows, warp tunnel, generated textures
+  fx/                    explosions, shields, engine trails, lens flare, shadows, warp tunnel, generated textures
 vendor/three/            Three.js r170 (MIT licence) and the few add-ons the game uses
 ```
 

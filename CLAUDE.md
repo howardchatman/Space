@@ -17,6 +17,12 @@ ES modules, no build step, no npm dependencies.
   cockpit, +Z for small-craft models (`entities/drone.js`) and torpedoes. A capital ship model is two
   sections (bow and stern groups at the ship's origin) so it can break up when destroyed; add new parts as
   children of `object` before the end of `buildCapitalShip`, which sorts them into sections by z.
+- `game.torpedoes` holds both sides' torpedoes: check `t.hostile` (corvettes' are hostile; yours aren't).
+  The flagship's point defense rate scales with its working gun batteries.
+- Planets come in two kinds with the same interface (`group`, `radius`, `shineColor`, `update`, `dispose`):
+  `world/planet.js` (rocky) and `world/gasgiant.js` (bands and rings). `sector.js` picks one per sector.
+- The lens flare hides when the sun is blocked; on the bridge, `#sunClear` in `game.js` uses the room's
+  dimensions from `bridge.js`, so update both together if the bridge changes shape.
 - Hull materials come from `plating()` in `shipmodel.js`. Its options are uniforms, not shader text:
   three.js keys programs on the `onBeforeCompile` source, so per-material GLSL would be silently shared.
 - Colors are CSS tokens on `:root` in `styles.css`; `readPalette()` in `src/main.js` hands them to the 3D
@@ -36,7 +42,8 @@ ES modules, no build step, no npm dependencies.
 - Verify changes in a real browser. Headless Chromium works with
   `--enable-unsafe-swiftshader --use-angle=swiftshader` (slow, about 2 fps, so advance the game by calling
   `game.update(1 / 30)` in a loop rather than waiting). Exercise recon, the map, a flagship fight, the
-  death ray, power orders, corvettes and torpedoes, subsystem targeting, engineering, piloting a scout, warp,
+  death ray, power orders, corvettes and torpedoes (theirs and yours), evasive maneuvers, damage control,
+  the flagship's retreat, subsystem targeting, engineering, piloting a scout, the touch helm pad, warp,
   the after-action report and refit, a loss (the warship breaks up; a new run must mend it), and phone-sized
   viewports with touch in both orientations.
   `game.photo = { position, target }` gives a free camera for screenshots.

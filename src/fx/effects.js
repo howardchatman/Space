@@ -272,6 +272,21 @@ export class Effects {
     this.sparkBurst(position, 30, color, 120);
   }
 
+  /** Sparks streaming in from a shell around `position` to its center over about `time` seconds. */
+  implode(position, radius, count, color, time) {
+    // Sparks slow down with drag, so start them fast enough to arrive.
+    const drag = 1.8;
+    const speed = (radius * drag) / (1 - Math.exp(-drag * time));
+    for (let i = 0; i < count && this.sparkCount < MAX_SPARKS; i++) {
+      const k = this.sparkCount++;
+      const dir = randomUnit(new THREE.Vector3());
+      this.sparkPos.set([position.x + dir.x * radius, position.y + dir.y * radius, position.z + dir.z * radius], k * 3);
+      this.sparkVel.set([-dir.x * speed, -dir.y * speed, -dir.z * speed], k * 3);
+      this.sparkBase.set([color.r * 2, color.g * 2, color.b * 2], k * 3);
+      this.sparkLife[k] = this.sparkMax[k] = time;
+    }
+  }
+
   sparkBurst(position, count, color, speed) {
     for (let i = 0; i < count && this.sparkCount < MAX_SPARKS; i++) {
       const k = this.sparkCount++;

@@ -7,10 +7,11 @@ let shared = null;
 
 /**
  * A homing torpedo: slow off the tube, then accelerating and curving toward its target. It can be shot
- * down; point defense tries to. Leaves a trail and pulses red so you can track it.
+ * down; point defense tries to. Pulses so you can track it. `spec` holds its flight numbers (the
+ * corvettes' by default); `hostile` torpedoes are aimed at you, the rest are yours.
  */
 export class Torpedo {
-  constructor(position, direction, target, color) {
+  constructor(position, direction, target, color, { spec = CONFIG.torpedo, hostile = true, damage = spec.damage ?? 0 } = {}) {
     if (!shared) {
       const body = new THREE.CylinderGeometry(0.7, 0.9, 6, 10);
       body.rotateX(Math.PI / 2);
@@ -19,7 +20,10 @@ export class Torpedo {
         material: new THREE.MeshStandardMaterial({ color: 0x3a3d44, metalness: 0.7, roughness: 0.4 }),
       };
     }
-    const t = CONFIG.torpedo;
+    const t = spec;
+    this.spec = spec;
+    this.hostile = hostile;
+    this.damage = damage;
     this.kind = 'torpedo';
     this.name = 'Torpedo';
     this.object = new THREE.Group();
@@ -46,7 +50,7 @@ export class Torpedo {
   }
 
   update(dt) {
-    const t = CONFIG.torpedo;
+    const t = this.spec;
     this.age += dt;
     this.life -= dt;
     if (this.life <= 0) this.dead = true;

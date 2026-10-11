@@ -104,6 +104,8 @@ export function buildBridge({ flare, ice, hostile }) {
   ceiling.position.set(0, top, (front + back) / 2);
   group.add(ceiling);
   const stripMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.55, 0.5, 0.42) });
+  // Everything that glows on the bridge, so a hit can make it flicker (see Game.render).
+  const glows = [stripMaterial];
   for (const x of [-6, 0, 6]) {
     const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.3, back - front - 4), stripMaterial);
     strip.rotation.x = Math.PI / 2;
@@ -150,7 +152,9 @@ export function buildBridge({ flare, ice, hostile }) {
     screen2.material.map = consoleTexture(hex, kind === 'log' ? 'systems' : 'log', i * 131 + 7);
     screen2.position.x = 0.9;
     desk.add(screen2);
+    glows.push(screen.material, screen2.material);
   });
+  group.userData.glows = glows.map((material) => ({ material, color: material.color.clone() }));
 
   // No light here: lights inside groups that get hidden would change the light count and force
   // every material to recompile. The game owns one interior light on the camera instead.
