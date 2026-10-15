@@ -257,7 +257,9 @@ export class Game {
     this.wrecks = this.wrecks?.filter((wreck) => wreck.ship !== w) ?? [];
     this.#mend(w);
     w.fires = [];
-    this.flicker = 0;
+    this.brownout = null; // a brief dip in the bridge lights after a heavy hit
+    this.brownoutReady = 0;
+    this.hurtShown = 0;
     this.lastHit = -10;
     this.alerts = {};
     this.deathTimer = 0;
@@ -1065,7 +1067,7 @@ export class Game {
     b.group.visible = true;
     b.group.position.copy(origin);
     b.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
-    const flicker = 1 + Math.sin(this.time * 70) * 0.12;
+    const flicker = 1 + Math.sin(this.time * 9) * 0.04;
     b.core.scale.set(2.4 * flicker, 2.4 * flicker, length);
     b.glow.scale.set(9 * flicker, 9 * flicker, length);
     b.glow.material.uniforms.uTime.value = this.time;
@@ -2286,7 +2288,10 @@ export class Game {
       this.report.hullLost += hullDamage;
       this.effects.impact(at, this.colors.flareHot);
       if (this.mode === 'bridge') {
-        this.flicker = Math.max(this.flicker, Math.min(0.8, 0.2 + hullDamage / 60));
+        if (hullDamage >= 20 && !this.brownout && this.time > this.brownoutReady && !this.reduceMotion) {
+          this.brownout = { t: 0, depth: Math.min(0.5, 0.2 + hullDamage / 200) };
+          this.brownoutReady = this.time + 3;
+        }
         this.hurt = Math.min(1, this.hurt + Math.min(0.5, hullDamage / 40));
         this.shake = Math.max(this.shake, Math.min(1, hullDamage / 25));
         this.sound.hit();
@@ -2667,19 +2672,27 @@ export class Game {
 
     const pilot = this.mode === 'pilot' && this.pilot && !this.pilot.dead;
     this.flare.update(dt, cam, this.sunDirection, this.state !== 'warp' && this.#sunClear(cam));
+    this.warship.model.shield.view(cam);
     const velocity = pilot ? this.pilot.velocity : this.warship.velocity;
     this.dust.update(cam.position, velocity);
     if (!pilot) this.bridgeCrew.update(dt, this.time);
-    // A hit makes the bridge's screens and lights stutter.
-    this.flicker = Math.max(0, this.flicker - dt);
-    const stutter = this.flicker > 0 && Math.random() < 0.45 ? rand(0.05, 0.5) : 1;
-    for (const g of this.bridge.userData.glows) g.material.color.copy(g.color).multiplyScalar(stutter);
-    this.interiorLight.intensity = (pilot ? 0.35 : this.state === 'title' || this.state === 'gameover' ? 0 : 2) * stutter;
+    // A heavy hit makes the bridge's screens and lights dip once and come back: a smooth brownout, never a
+    // strobe (rapid flashing is hard on the eyes).
+    let power = 1;
+    if (this.brownout) {
+      this.brownout.t += dt;
+      const k = this.brownout.t / 0.6;
+      if (k >= 1) this.brownout = null;
+      else power = 1 - this.brownout.depth * Math.sin(Math.PI * k);
+    }
+    for (const g of this.bridge.userData.glows) g.material.color.copy(g.color).multiplyScalar(power);
+    this.interiorLight.intensity = (pilot ? 0.35 : this.state === 'title' || this.state === 'gameover' ? 0 : 2) * power;
     this.interiorLight.distance = pilot ? 4 : 24;
     this.interiorLight.position.set(0, pilot ? 0.3 : 2.6, pilot ? -0.4 : 4);
 
     this.pipeline.render();
-    this.ui.setHurt(this.hurt);
+    this.hurtShown += (Math.min(0.75, this.hurt) - this.hurtShown) * Math.min(1, dt * 5);
+    this.ui.setHurt(this.hurtShown);
 
     const playing = this.state === 'playing' || this.state === 'warp';
     if (playing && this.mode === 'pilot' && this.pilot) {

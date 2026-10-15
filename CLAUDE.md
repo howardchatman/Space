@@ -30,6 +30,9 @@ ES modules, no build step, no npm dependencies.
 - The scene renders in HDR: anything brighter than about 0.9 blooms. Keep glows near the camera (bolts,
   muzzle flashes, cockpit lamps, console screens) dim, or they flood the screen. Keep hull materials matte:
   shiny decks mirror the sun.
+- Never strobe the view: no per-frame random brightness, and nothing that flashes more than about three
+  times a second (it's hard on the eyes and reads as screen flicker). Hit reactions on the bridge are one
+  smooth dip and recovery; the red damage vignette eases in; the warship's own shield is faint from inside.
 - Expensive procedural content (Milky Way, planet surface) is baked once into cube maps (the planet once
   per sector). Don't move per-pixel noise into per-frame shaders on large surfaces.
 - Don't add or remove lights after startup, and don't put lights inside groups that get hidden: either

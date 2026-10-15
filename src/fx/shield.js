@@ -20,6 +20,7 @@ export class ShieldBubble {
       uniforms: {
         uHits: { value: this.hits },
         uColor: { value: color.clone() },
+        uStrength: { value: 1 },
       },
       vertexShader: /* glsl */ `
         varying vec3 vDir;
@@ -36,6 +37,7 @@ export class ShieldBubble {
       fragmentShader: /* glsl */ `
         uniform vec4 uHits[${MAX_HITS}];
         uniform vec3 uColor;
+        uniform float uStrength;
         varying vec3 vDir;
         varying vec3 vNormalW;
         varying vec3 vWorld;
@@ -57,7 +59,7 @@ export class ShieldBubble {
           float lattice = 0.45 + 0.55 * smoothstep(0.4, 0.5, max(g.x, max(g.y, g.z)));
           vec3 view = normalize(cameraPosition - vWorld);
           float rim = pow(1.0 - abs(dot(normalize(vNormalW), view)), 2.0);
-          gl_FragColor = vec4(uColor * glow * lattice * (0.55 + 1.2 * rim), 1.0);
+          gl_FragColor = vec4(uColor * glow * lattice * (0.55 + 1.2 * rim) * uStrength, 1.0);
         }
       `,
     });
@@ -66,6 +68,7 @@ export class ShieldBubble {
     this.mesh.position.copy(center);
     this.mesh.renderOrder = 5;
     this.mesh.visible = false;
+    this._local = new THREE.Vector3();
   }
 
   /** Starts a ripple where a world-space point meets the bubble. */
@@ -74,6 +77,15 @@ export class ShieldBubble {
     this.hits[this.next].set(local.x, local.y, local.z, 0);
     this.next = (this.next + 1) % MAX_HITS;
     this.mesh.visible = true;
+  }
+
+  /**
+   * Seen from inside (the bridge sits inside its own ship's shield), a ripple sweeps across much of the view,
+   * so it's drawn fainter there.
+   */
+  view(camera) {
+    const inside = this.mesh.worldToLocal(this._local.copy(camera.position)).length() < 1;
+    this.material.uniforms.uStrength.value = inside ? 0.3 : 1;
   }
 
   update(dt) {
