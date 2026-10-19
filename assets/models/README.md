@@ -1,7 +1,7 @@
 # 3D models
 
-The game loads these at startup (`src/models.js`). Each model is a `.gltf` file with its geometry in a
-`.bin` and its textures as separate `.webp` files, so every piece loads by plain URL.
+The game loads these at startup (`src/models.js`). Each model is a `.gltf` file with its geometry
+embedded (base64) and its textures as separate `.webp` files, so every file is text or an image.
 
 ## Spaceships: Quaternius, CC0
 
@@ -42,5 +42,5 @@ doesn't imply that NASA endorses it.
 - The Quaternius ships were converted from Godot meshes to glTF with their textures.
 - The NASA models were decompressed from Draco and welded (and simplified where very detailed), and
   their textures resized.
-- All textures were converted to WebP, and every model was split into `.gltf`, `.bin` and texture files.
+- All textures were converted to WebP and stored next to the `.gltf` files.
 - In the game, materials are swapped for matte ones and each model is rescaled; see `src/models.js`.

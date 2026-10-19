@@ -3,8 +3,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /**
  * Ready-made 3D models from assets/models, loaded once at startup (credits in assets/models/README.md).
- * Each is a .gltf with its geometry in a .bin and textures as separate .webp files: every piece loads by
- * plain URL, which works anywhere the game's own files do.
  * Quaternius spaceships fly as enemy fighters, recon scouts and corvette hulls; NASA spacecraft drift as
  * derelicts; NASA's shape model of the asteroid Bennu is a landmark. Ships face +Z, as glTF does.
  *
@@ -43,8 +41,8 @@ let ready = false;
  */
 export function loadModels({ base = 'assets/models/', timeout = 20000 } = {}) {
   const loader = new GLTFLoader();
-  const jobs = Object.entries(MODELS).map(([name, spec]) => loader.loadAsync(base + spec.file).then(
-    (gltf) => library.set(name, prepare(gltf.scene, spec)),
+  const jobs = Object.entries(MODELS).map(([name, spec]) => loadScene(loader, base, spec.file).then(
+    (scene) => library.set(name, prepare(scene, spec)),
     (error) => console.warn(`Couldn't load ${spec.file}; using the built-in model instead.`, error),
   ));
   const late = new Promise((resolve) => setTimeout(resolve, timeout));
@@ -99,6 +97,47 @@ export function farthestPoint(object, direction) {
     }
   });
   return best.multiply(object.scale);
+}
+
+/**
+ * Loads one model. Each is a .gltf with its geometry embedded as base64 and its textures in separate .webp
+ * files, so every file is text or an image: the kinds any static host serves, the claude.ai artifact
+ * included. The geometry is unpacked here into a binary glTF for the loader, because three.js would fetch
+ * the embedded data: URL itself and strict page policies block that; textures load by plain URL.
+ */
+async function loadScene(loader, base, file) {
+  const response = await fetch(base + file);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  const json = await response.json();
+  const [buffer] = json.buffers;
+  const raw = atob(buffer.uri.slice(buffer.uri.indexOf(',') + 1));
+  const bin = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bin[i] = raw.charCodeAt(i);
+  delete buffer.uri;
+  const gltf = await loader.parseAsync(packGlb(json, bin), base);
+  return gltf.scene;
+}
+
+/** A binary glTF: a 12-byte header, then a JSON chunk and a BIN chunk, each padded to 4 bytes. */
+function packGlb(json, bin) {
+  const text = new TextEncoder().encode(JSON.stringify(json));
+  const jsonLength = Math.ceil(text.length / 4) * 4;
+  const binLength = Math.ceil(bin.length / 4) * 4;
+  const total = 12 + 8 + jsonLength + 8 + binLength;
+  const out = new Uint8Array(total);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, 0x46546c67, true); // 'glTF'
+  view.setUint32(4, 2, true);
+  view.setUint32(8, total, true);
+  view.setUint32(12, jsonLength, true);
+  view.setUint32(16, 0x4e4f534a, true); // 'JSON'
+  out.set(text, 20);
+  out.fill(0x20, 20 + text.length, 20 + jsonLength);
+  const at = 20 + jsonLength;
+  view.setUint32(at, binLength, true);
+  view.setUint32(at + 4, 0x004e4942, true); // 'BIN'
+  out.set(bin, at + 8);
+  return out.buffer;
 }
 
 /**

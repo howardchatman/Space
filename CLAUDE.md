@@ -19,10 +19,11 @@ ES modules, no build step, no npm dependencies.
   children of `object` before the end of `buildCapitalShip`, which sorts them into sections by z.
 - `game.torpedoes` holds both sides' torpedoes: check `t.hostile` (corvettes' are hostile; yours aren't).
   The flagship's point defense rate scales with its working gun batteries.
-- Ready-made 3D models (Quaternius ships, NASA spacecraft, Bennu) live in `assets/models` as `.gltf` +
-  `.bin` + `.webp`, never GLB with embedded images: those decode through blob: URLs, which strict page
-  policies (like the claude.ai artifact) can block. `src/models.js` loads them, swaps in matte materials and
-  hands out sized copies; credit new ones in `assets/models/README.md`. Fighters and scouts are
+- Ready-made 3D models (Quaternius ships, NASA spacecraft, Bennu) live in `assets/models` as `.gltf` with
+  the geometry embedded as base64, plus `.webp` textures. Keep it that way: the claude.ai artifact serves
+  only text and images (no `.bin` or `.glb`), and strict page policies block blob: and data: URLs, so
+  `src/models.js` unpacks the geometry itself and textures load by plain URL. It also swaps in matte
+  materials and hands out sized copies; credit new ones in `assets/models/README.md`. Fighters and scouts are
   `shipTemplate()` in `drone.js`, corvette hulls are baked once in `corvetteHull()` in `shipmodel.js` (in
   meters, bow to -Z, so plating panels come out right), derelicts are `Satellite`s and Bennu is the
   landmark. Every use falls back to the procedural model if a file doesn't load; Start waits for loading.
