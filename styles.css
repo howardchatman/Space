@@ -746,6 +746,8 @@ button { font: inherit; color: inherit; }
 .btn:hover { border-color: var(--flare); }
 .btn.primary { background: var(--flare); border-color: var(--flare); color: var(--void); }
 .btn.primary:hover { background: var(--flare-soft); }
+.btn:disabled { opacity: 0.6; cursor: progress; }
+.btn.primary:disabled:hover { background: var(--flare); }
 
 .best {
   margin: 0;

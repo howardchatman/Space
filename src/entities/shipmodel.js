@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { glowTexture } from '../fx/textures.js';
 import { ShieldBubble } from '../fx/shield.js';
 import { mulberry32 } from '../util/math.js';
+import { CORVETTES, enginePoints, exhaustRadius, farthestPoint, getModel } from '../models.js';
 
 const HALF_LENGTH = 210;
 const HALF_WIDTH = 35;
@@ -496,19 +497,166 @@ export function buildCapitalShip({ hostile = false, seed = 1, colors }) {
   };
 }
 
+const CORVETTE_LENGTH = 90;
+const corvetteHulls = new Map(); // model name -> { geometry, map, ... } once baked
+
 /**
- * An enemy corvette, about 90 m long: a wedge hull with engine pods, one turret and a torpedo tube
- * under the bow. Same conventions as buildCapitalShip.
+ * A corvette hull from a loaded ship model, baked once per model into one geometry in meters with the bow
+ * toward -Z, so the plating shader's object-space panels come out at their usual size. Null until loaded.
+ * Fittings are placed by casting rays onto the hull: the turret on the deck, the torpedo tube under the
+ * bow; nav lights go on the widest and highest points and colliders follow the hull's girth.
+ */
+function corvetteHull(name) {
+  if (corvetteHulls.has(name)) return corvetteHulls.get(name);
+  const model = getModel(name, CORVETTE_LENGTH);
+  if (!model) return null;
+  model.rotation.y = Math.PI;
+  model.updateMatrixWorld(true);
+  const parts = [];
+  let map = null;
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry.clone().applyMatrix4(o.matrixWorld);
+    for (const key of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(key)) g.deleteAttribute(key);
+    parts.push(g);
+    map ??= o.material.map;
+  });
+  const geometry = mergeGeometries(parts);
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox;
+  const probe = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  const ray = new THREE.Raycaster();
+  const surface = (z, up) => {
+    ray.set(new THREE.Vector3(0, up ? box.min.y - 10 : box.max.y + 10, z), new THREE.Vector3(0, up ? 1 : -1, 0));
+    const hit = ray.intersectObject(probe)[0];
+    return hit ? hit.point.y : up ? box.min.y : box.max.y;
+  };
+  const centerY = (box.min.y + box.max.y) / 2;
+  const pos = geometry.attributes.position;
+  const colliders = [-30, 0, 30].map((z) => {
+    let reach = 0;
+    for (let i = 0; i < pos.count; i++) {
+      if (Math.abs(pos.getZ(i) - z) < 15) reach = Math.max(reach, Math.hypot(pos.getX(i), pos.getY(i) - centerY));
+    }
+    return { offset: new THREE.Vector3(0, centerY, z), radius: Math.max(14, reach * 0.85) };
+  });
+  const flip = (v) => v.set(-v.x, v.y, -v.z); // model space faces +Z; the hull is turned to face -Z
+  const wing = farthestPoint(probe, new THREE.Vector3(1, 0, 0));
+  const top = farthestPoint(probe, new THREE.Vector3(0, 1, 0));
+  const hull = {
+    geometry,
+    map,
+    colliders,
+    turret: new THREE.Vector3(0, surface(-20, false) - 0.5, -20),
+    tube: new THREE.Vector3(0, surface(-38, true) - 1.2, -38),
+    engines: enginePoints(name, CORVETTE_LENGTH).map(flip),
+    exhaust: exhaustRadius(name) * (box.max.x - box.min.x),
+    navLights: [[-wing.x - 1, wing.y, wing.z, false], [wing.x + 1, wing.y, wing.z, false], [top.x, top.y + 1.5, top.z, true]],
+  };
+  probe.material.dispose();
+  corvetteHulls.set(name, hull);
+  return hull;
+}
+
+/**
+ * An enemy corvette, about 90 m long, with one turret and a torpedo tube under the bow. Its hull is one
+ * of the ship models (CORVETTES in models.js, picked by seed) or, if those didn't load, a wedge with
+ * engine pods. Same conventions as buildCapitalShip.
  */
 export function buildCorvette({ seed = 1, colors }) {
   const rng = mulberry32(seed);
   const object = new THREE.Group();
   const paint = { color: 0x40353a, windowColor: new THREE.Color(0.8, 0.24, 0.18), roughness: 0.75 };
-  const hullMaterial = plating(paint);
   const fittingMaterial = plating({ ...paint, windows: false });
   const gunMaterial = new THREE.MeshStandardMaterial({ color: 0x2c2f35, metalness: 0.75, roughness: 0.38 });
   const red = colors.hostile.clone();
 
+  const loaded = corvetteHull(CORVETTES[seed % CORVETTES.length]);
+  let hullMaterial;
+  let layout;
+  if (loaded) {
+    // The model's own paint, under the same panel seams and window decks as every other hull.
+    hullMaterial = plating({ ...paint, color: 0xc4bcbe });
+    hullMaterial.map = loaded.map;
+    object.add(new THREE.Mesh(loaded.geometry, hullMaterial));
+    layout = loaded;
+  } else {
+    hullMaterial = plating(paint);
+    object.add(new THREE.Mesh(wedgeHull(rng), hullMaterial));
+    layout = {
+      turret: new THREE.Vector3(0, 4.5, -16),
+      tube: new THREE.Vector3(0, -5, -42),
+      engines: [new THREE.Vector3(-15, -1, 40.5), new THREE.Vector3(15, -1, 40.5)],
+      exhaust: 3.6,
+      navLights: [[-19, -1, 20, false], [19, -1, 20, false], [0, 19.5, 30, true]],
+      colliders: [
+        { offset: new THREE.Vector3(0, 0, -30), radius: 9 },
+        { offset: new THREE.Vector3(0, 2, -5), radius: 12 },
+        { offset: new THREE.Vector3(0, 0, 22), radius: 17 },
+      ],
+    };
+  }
+
+  const turret = buildTurret(fittingMaterial, gunMaterial, false);
+  turret.base.scale.setScalar(0.55);
+  turret.base.position.copy(layout.turret);
+  turret.restYaw = 0;
+  object.add(turret.base);
+
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.6, 9, 12), gunMaterial);
+  tube.rotation.x = Math.PI / 2;
+  tube.position.copy(layout.tube);
+  object.add(tube);
+
+  const engines = [];
+  const plumes = [];
+  for (const at of layout.engines) {
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTexture(),
+      color: colors.flareHot.clone().multiplyScalar(1.2),
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+    }));
+    glow.position.copy(at).add(new THREE.Vector3(0, 0, 1.5));
+    object.add(glow);
+    engines.push(glow);
+    const plume = buildPlume(layout.exhaust, 34, colors.flareHot.clone().multiplyScalar(0.6));
+    plume.position.copy(at);
+    object.add(plume);
+    plumes.push(plume);
+  }
+
+  const navLights = [];
+  for (const [x, y, z, blink] of layout.navLights) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTexture(),
+      color: red.clone().multiplyScalar(3),
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+    }));
+    sprite.position.set(x, y, z);
+    sprite.scale.setScalar(4);
+    sprite.userData.blink = blink;
+    object.add(sprite);
+    navLights.push(sprite);
+  }
+
+  return {
+    object,
+    turrets: [turret],
+    engines,
+    navLights,
+    plumes,
+    colliders: layout.colliders.map((c) => ({ offset: c.offset.clone(), radius: c.radius })),
+    torpedoTube: layout.tube.clone().add(new THREE.Vector3(0, 0, -6)),
+    materials: [hullMaterial, gunMaterial],
+  };
+}
+
+/** The built-in corvette hull: a tapered wedge with a dorsal spine, a fin and two engine pods. */
+function wedgeHull(rng) {
   const parts = [];
   const hull = new THREE.BoxGeometry(22, 12, 90, 1, 1, 6);
   const pos = hull.attributes.position;
@@ -542,66 +690,5 @@ export function buildCorvette({ seed = 1, colors }) {
     g.translate((rng() * 2 - 1) * 5, 6 * (0.6 + 0.4 * Math.min(1, ((z + 45) / 90) / 0.5)) + 0.5, z);
     parts.push(g);
   }
-  object.add(new THREE.Mesh(mergeGeometries(parts), hullMaterial));
-
-  const turret = buildTurret(fittingMaterial, gunMaterial, false);
-  turret.base.scale.setScalar(0.55);
-  turret.base.position.set(0, 4.5, -16);
-  turret.restYaw = 0;
-  object.add(turret.base);
-
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.6, 9, 12), gunMaterial);
-  tube.rotation.x = Math.PI / 2;
-  tube.position.set(0, -5, -42);
-  object.add(tube);
-
-  const engines = [];
-  const plumes = [];
-  for (const s of [-1, 1]) {
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTexture(),
-      color: colors.flareHot.clone().multiplyScalar(1.2),
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      transparent: true,
-    }));
-    glow.position.set(s * 15, -1, 42);
-    object.add(glow);
-    engines.push(glow);
-    const plume = buildPlume(3.6, 34, colors.flareHot.clone().multiplyScalar(0.6));
-    plume.position.set(s * 15, -1, 40.5);
-    object.add(plume);
-    plumes.push(plume);
-  }
-
-  const navLights = [];
-  for (const [x, y, z, blink] of [[-19, -1, 20, false], [19, -1, 20, false], [0, 19.5, 30, true]]) {
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTexture(),
-      color: red.clone().multiplyScalar(3),
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      transparent: true,
-    }));
-    sprite.position.set(x, y, z);
-    sprite.scale.setScalar(4);
-    sprite.userData.blink = blink;
-    object.add(sprite);
-    navLights.push(sprite);
-  }
-
-  return {
-    object,
-    turrets: [turret],
-    engines,
-    navLights,
-    plumes,
-    colliders: [
-      { offset: new THREE.Vector3(0, 0, -30), radius: 9 },
-      { offset: new THREE.Vector3(0, 2, -5), radius: 12 },
-      { offset: new THREE.Vector3(0, 0, 22), radius: 17 },
-    ],
-    torpedoTube: new THREE.Vector3(0, -5, -48),
-    materials: [hullMaterial, gunMaterial],
-  };
+  return mergeGeometries(parts);
 }

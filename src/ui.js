@@ -39,6 +39,14 @@ export class UI {
     this.#buildSystems();
   }
 
+  /** While the 3D models load, the start button waits. */
+  setLoading(loading) {
+    const button = $('btn-start');
+    button.disabled = loading;
+    button.textContent = loading ? 'Loading…' : 'Take command';
+    if (!loading && !this.screens.title.hidden) button.focus({ preventScroll: true });
+  }
+
   bind(actions) {
     const on = (id, fn) => $(id).addEventListener('click', fn);
     on('btn-start', actions.start);

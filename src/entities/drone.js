@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { glowTexture } from '../fx/textures.js';
+import { enginePoints, farthestPoint, getModel } from '../models.js';
 import { clamp, rand, randomUnit, smooth } from '../util/math.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -9,8 +10,8 @@ const ORIGIN = new THREE.Vector3();
 const Z = new THREE.Vector3(0, 0, 1);
 
 /**
- * Builds a small-craft model once: a fighter with running lights. Forward is +Z.
- * Enemy drones are gunmetal with red lights; recon scouts are pale with blue lights.
+ * Builds the built-in small-craft model, used if the ship models don't load: a fighter with running
+ * lights. Forward is +Z. Enemy drones are gunmetal with red lights; recon scouts are pale with blue lights.
  */
 export function buildDroneModel(lightColor, hullColor = 0x4a4f58) {
   const parts = [];
@@ -58,7 +59,30 @@ export function buildDroneModel(lightColor, hullColor = 0x4a4f58) {
 
   const model = new THREE.Group();
   model.add(hull, canopy, ...lights);
+  model.userData.engine = [0, 0, -3.2];
   return model;
+}
+
+const TIP_LIGHT = new THREE.BoxGeometry(0.3, 0.3, 0.5);
+
+/**
+ * A small-craft template from a loaded ship model (models.js), scaled to `size` meters across, with
+ * running lights on the wingtips. Null if the model didn't load.
+ */
+export function shipTemplate(name, lightColor, size) {
+  const ship = getModel(name, size);
+  if (!ship) return null;
+  const template = new THREE.Group();
+  template.add(ship);
+  const lightMaterial = new THREE.MeshBasicMaterial({ color: lightColor.clone().multiplyScalar(1.8) });
+  const tip = farthestPoint(ship, new THREE.Vector3(1, 0, 0));
+  for (const side of [-1, 1]) {
+    const light = new THREE.Mesh(TIP_LIGHT, lightMaterial);
+    light.position.set(side * tip.x, tip.y, tip.z);
+    template.add(light);
+  }
+  template.userData.engine = enginePoints(name, size)[0].toArray();
+  return template;
 }
 
 /**
@@ -77,9 +101,12 @@ export class Craft {
       depthWrite: false,
       transparent: true,
     }));
-    this.engine.position.set(0, 0, -3.2);
+    // The exhaust point: where the engine glows and the trail starts.
+    this.tail = new THREE.Vector3().fromArray(template.userData.engine);
+    this.engine.position.copy(this.tail);
     this.engine.scale.setScalar(3);
     this.model.add(this.engine);
+    this.pulse = rand(0, 6);
 
     this.object.position.copy(position);
     this.position = this.object.position;
@@ -118,7 +145,8 @@ export class Craft {
     this.velocity.copy(this.forward(new THREE.Vector3())).multiplyScalar(this.speed * throttle);
     this.position.addScaledVector(this.velocity, dt);
     this.object.quaternion.copy(this.heading).multiply(this._q.setFromAxisAngle(Z, this.bank));
-    this.engine.scale.setScalar(2.4 + throttle * 1.6 + Math.random() * 0.4);
+    this.pulse += dt * 9;
+    this.engine.scale.setScalar(2.6 + throttle * 1.6 + Math.sin(this.pulse) * 0.2);
   }
 
   face(dir) {

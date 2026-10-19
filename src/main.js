@@ -4,6 +4,7 @@ import { Sound } from './audio.js';
 import { UI } from './ui.js';
 import { Crew } from './crew.js';
 import { VoiceControl } from './voice.js';
+import { loadModels } from './models.js';
 
 /** Colors come from the CSS tokens in styles.css, so the palette lives in one place. */
 function readPalette() {
@@ -37,6 +38,9 @@ const VOICE_MESSAGES = {
   unsupported: 'Voice orders need Chrome, Edge or Safari.',
   denied: "Voice orders need microphone access, which this page doesn't have. Use the buttons or keys.",
 };
+
+// Fetch the 3D models straight away; the start button waits for them.
+const modelsLoaded = loadModels();
 
 const canvas = document.getElementById('view');
 const ui = new UI();
@@ -77,6 +81,8 @@ if (game) {
     mapClick: (x, y) => game.mapClick(x, y),
     mapMode: (mode) => game.setMapMode(mode),
   });
+  ui.setLoading(true);
+  modelsLoaded.then(() => ui.setLoading(false));
   ui.setMuted(sound.muted);
   ui.setCrewVoice(crew.voiceOn);
 

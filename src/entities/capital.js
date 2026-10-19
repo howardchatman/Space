@@ -40,7 +40,12 @@ export class CapitalShip {
     this.radius = 120; // rough size for AI spacing
     this.dead = false;
     this.colliders = model.colliders.map((c) => ({ offset: c.offset, radius: c.radius, position: new THREE.Vector3() }));
+    this.extent = Math.max(...model.colliders.map((c) => c.offset.length() + c.radius)); // reach from center
+    this.avoid = []; // big obstacles ({ position, radius }) that steering goes around
     this._v = new THREE.Vector3();
+    this._a = new THREE.Vector3();
+    this._b = new THREE.Vector3();
+    this._c = new THREE.Vector3();
     this._euler = new THREE.Euler(0, 0, 0, 'YXZ');
     this.#applyTransform();
   }
@@ -65,7 +70,7 @@ export class CapitalShip {
 
   /** Sets yaw and pitch commands that turn the ship toward a world point. Returns the angle still to go. */
   steerToward(point) {
-    const local = this._v.copy(point).sub(this.position);
+    const local = this._v.copy(this.#detour(point)).sub(this.position);
     const yawTo = Math.atan2(-local.x, -local.z);
     const pitchTo = Math.atan2(local.y, Math.hypot(local.x, local.z));
     let yawErr = yawTo - this.heading;
@@ -74,6 +79,28 @@ export class CapitalShip {
     this.yawCommand = clamp(yawErr * 3, -1, 1);
     this.pitchCommand = clamp(pitchErr * 3, -1, 1);
     return Math.hypot(yawErr, pitchErr);
+  }
+
+  /**
+   * If an obstacle in `avoid` lies across the straight path to `point`, a point beside it to aim for
+   * instead; otherwise `point`. Re-aimed every frame, this swings the ship around the obstacle's edge.
+   */
+  #detour(point) {
+    for (const o of this.avoid) {
+      const path = this._a.subVectors(point, this.position);
+      const length = path.length();
+      if (length < 1) break;
+      path.divideScalar(length);
+      const along = this._b.subVectors(o.position, this.position).dot(path);
+      if (along <= 0 || along > length + o.radius) continue;
+      const clearance = o.radius + this.extent + 150;
+      // From the obstacle's center to the nearest point on the path.
+      const off = this._c.copy(this.position).addScaledVector(path, along).sub(o.position);
+      if (off.length() >= clearance) continue;
+      if (off.lengthSq() < 1) off.set(-path.z, 0, path.x); // dead ahead: pass it on one side
+      return off.normalize().multiplyScalar(clearance * 1.2).add(o.position);
+    }
+    return point;
   }
 
   update(dt, time) {
@@ -98,13 +125,15 @@ export class CapitalShip {
 
     const thrust = Math.max(0.15, Math.abs(this.throttle)) * (this.enginesDown ? 0 : 1);
     const glowSize = this.model.engineGlowSize ?? 1;
+    // A slow, smooth throb: random flicker here would strobe.
+    const throb = Math.sin(time * 11);
     for (const glow of this.model.engines) {
       glow.visible = !this.enginesDown;
-      glow.scale.setScalar((26 + thrust * 30 + Math.random() * 3) * glowSize);
+      glow.scale.setScalar((27.5 + thrust * 30 + throb * 1.5) * glowSize);
     }
     for (const plume of this.model.plumes ?? []) {
       plume.visible = thrust > 0.02;
-      plume.scale.z = 0.3 + thrust * 0.9 + Math.random() * 0.06;
+      plume.scale.z = 0.33 + thrust * 0.9 + throb * 0.03;
       plume.material.uniforms.uIntensity.value = 0.35 + thrust * 0.9;
     }
     if (this.model.radar) this.model.radar.rotation.y += dt * 0.9;

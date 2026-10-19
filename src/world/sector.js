@@ -13,7 +13,7 @@ const NEBULA_COLORS = [
 
 /**
  * Lays out one sector from a seed: where you arrive, where the enemy flagship hides, asteroid clusters,
- * derelict satellites, enemy patrols, and the sun and planet on the horizon.
+ * derelict satellites, enemy patrols, a giant asteroid, and the sun and planet on the horizon.
  */
 export function generateSector(index, seed) {
   const rng = mulberry32(seed);
@@ -60,6 +60,17 @@ export function generateSector(index, seed) {
     if (p.distanceTo(start) > 2600) patrols.push({ position: p, size: Math.min(2 + Math.floor(index / 2), 4) });
   }
 
+  // A giant asteroid in most sectors, clear of where you arrive, the flagship, derelicts and patrols.
+  let landmark = null;
+  if (rng() < 0.65) {
+    for (let i = 0; i < 60 && !landmark; i++) {
+      const p = pointInDisc(R * 0.75, 250);
+      const clear = p.distanceTo(start) > 2600 && p.distanceTo(flagship) > 2200
+        && satellites.every((q) => q.distanceTo(p) > 900) && patrols.every((q) => q.position.distanceTo(p) > 1000);
+      if (clear) landmark = { position: p, radius: between(260, 340) };
+    }
+  }
+
   // Sky: a sun high-ish and a planet off to one side, never in the same patch of sky.
   const sunDirection = new THREE.Vector3();
   do {
@@ -87,6 +98,7 @@ export function generateSector(index, seed) {
     clusters,
     satellites,
     patrols,
+    landmark,
     sunDirection,
     nebula: {
       direction: nebulaDir,

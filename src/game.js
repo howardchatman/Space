@@ -12,7 +12,7 @@ import { SpaceDust } from './world/dust.js';
 import { AsteroidField } from './world/asteroids.js';
 import { generateSector } from './world/sector.js';
 import { Player, baseStats } from './entities/player.js';
-import { Drone, buildDroneModel } from './entities/drone.js';
+import { Drone, buildDroneModel, shipTemplate } from './entities/drone.js';
 import { Scout } from './entities/scout.js';
 import { Flagship } from './entities/flagship.js';
 import { Satellite } from './entities/satellite.js';
@@ -20,7 +20,7 @@ import { CapitalShip } from './entities/capital.js';
 import { buildCapitalShip, buildCorvette } from './entities/shipmodel.js';
 import { Corvette } from './entities/corvette.js';
 import { Torpedo } from './entities/torpedo.js';
-import { Bolts, segmentHitsSphere } from './entities/bolts.js';
+import { Bolts, segmentHitsSphere, sphereEntry } from './entities/bolts.js';
 import { Pickups } from './entities/pickups.js';
 import { Effects } from './fx/effects.js';
 import { WarpTunnel } from './fx/warp.js';
@@ -33,6 +33,7 @@ import { Hud } from './hud.js';
 import { TacticalMap } from './tactical.js';
 import { Engineering, SYSTEMS } from './engineering.js';
 import { UPGRADES, baseShipStats, rollUpgrades } from './upgrades.js';
+import { DERELICTS, FIGHTERS, SCOUT, getModel, modelsReady } from './models.js';
 import { clamp, rand, randInt, randomUnit, smooth } from './util/math.js';
 
 const BEST_KEY = 'deep-field:best';
@@ -52,7 +53,6 @@ const MUZZLES = {
 };
 
 // Explosion color ramps: [flash, body, smoke].
-const TRAIL_OFFSET = new THREE.Vector3(0, 0, -3); // behind a small craft's engine (craft face +Z)
 const DUST_TINT = [new THREE.Color(1, 0.95, 0.85), new THREE.Color(0.42, 0.36, 0.3), new THREE.Color(0.12, 0.1, 0.09)];
 
 function loadBest() {
@@ -141,9 +141,7 @@ export class Game {
     this.pickups = new Pickups(this.scene, { energy: this.colors.energy, shield: this.colors.ice, overdrive: this.colors.flareHot });
     this.trails = new Trails(this.scene);
     this.effects = new Effects(this.scene, this.field.geometries.small[0], this.field.materials[1]);
-    this.droneTemplate = buildDroneModel(this.colors.hostile);
-    this.scoutTemplate = buildDroneModel(this.colors.ice, 0xb9bec7);
-    if (this.shadows) for (const t of [this.droneTemplate, this.scoutTemplate]) useShadows(t);
+    this.#buildTemplates();
 
     // Your warship and its bridge.
     const model = buildCapitalShip({ hostile: false, seed: 7, colors: this.colors });
@@ -265,9 +263,23 @@ export class Game {
     this.deathTimer = 0;
   }
 
+  /**
+   * Small-craft templates: the ship models once they've loaded (fighters in three designs), the built-in
+   * ones before that or if they fail.
+   */
+  #buildTemplates() {
+    if (this.templatesFromModels) return;
+    const fighters = FIGHTERS.map((name) => shipTemplate(name, this.colors.hostile, 11)).filter(Boolean);
+    this.droneTemplates = fighters.length ? fighters : [buildDroneModel(this.colors.hostile)];
+    this.scoutTemplate = shipTemplate(SCOUT, this.colors.ice, 10) ?? buildDroneModel(this.colors.ice, 0xb9bec7);
+    if (this.shadows) for (const t of [...this.droneTemplates, this.scoutTemplate]) useShadows(t);
+    this.templatesFromModels = modelsReady() && fighters.length > 0;
+  }
+
   /** Clears the sector and lays out a new one around the warship. */
   #buildSector(index, seed) {
     this.#clearSector();
+    this.#buildTemplates();
     this.sectorIndex = index;
     const spec = generateSector(index, seed);
     this.spec = spec;
@@ -293,9 +305,11 @@ export class Game {
     this.planetShine.position.copy(spec.planet.position).normalize();
     this.planetShine.color.copy(this.planet.shineColor);
 
+    if (spec.landmark) this.field.placeLandmark(spec.landmark.position, spec.landmark.radius);
     for (const c of spec.clusters) this.field.populateCluster(c.center, c.radius, c.count);
     this.satellites = spec.satellites.map((p, i) => {
-      const sat = new Satellite(p, `Derelict ${String.fromCharCode(65 + i)}`);
+      const model = getModel(DERELICTS[(seed + i) % DERELICTS.length]);
+      const sat = new Satellite(p, `Derelict ${String.fromCharCode(65 + i)}`, model);
       this.scene.add(sat.object);
       if (this.shadows) useShadows(sat.object);
       return sat;
@@ -305,6 +319,8 @@ export class Game {
     if (this.shadows) useShadows(flagModel.object);
     this.scene.add(flagModel.object);
     this.flagship = new Flagship(flagModel, index);
+    this.flagship.avoid = this.#avoid();
+    this.warship.avoid = this.#avoid();
     this.flagship.position.copy(spec.flagship);
     this.flagship.setHeading(rand(0, Math.PI * 2));
 
@@ -361,11 +377,17 @@ export class Game {
     if (this.shadows) useShadows(model.object);
     this.scene.add(model.object);
     const c = new Corvette(model, this.sectorIndex, escort);
+    c.avoid = this.#avoid();
     c.position.copy(position);
     c.home.copy(position);
     c.setHeading(rand(0, Math.PI * 2), 0);
     this.corvettes.push(c);
     return c;
+  }
+
+  /** What capital ships steer around: the sector's giant asteroid, if it has one. */
+  #avoid() {
+    return this.field.landmark ? [this.field.landmark] : [];
   }
 
   #clearSector() {
@@ -398,6 +420,7 @@ export class Game {
   // ---------- Flow ----------
 
   start() {
+    if (!modelsReady()) return; // the start button waits for the 3D models
     this.#resetRun();
     this.#buildSector(1, this.runSeed);
     this.#setMap(false);
@@ -502,6 +525,13 @@ export class Game {
     if (point.length() > CONFIG.sector.radius * 1.05) {
       this.crew.say('Helm', "That's outside the sector, Captain.");
       return;
+    }
+    // A point on the giant asteroid moves out beside it.
+    const lm = this.field.landmark;
+    const off = lm && point.clone().sub(lm.position).setY(0);
+    if (off && off.length() < lm.radius + 450) {
+      if (off.lengthSq() < 1) off.set(1, 0, 0);
+      point.copy(lm.position).addScaledVector(off.normalize(), lm.radius + 450).setY(point.y);
     }
     if (this.mapMode === 'recon') {
       this.#sendRecon(point);
@@ -1060,6 +1090,10 @@ export class Game {
     let end;
     if (t && this.#inRayArc(t)) end = t.position.clone();
     else end = w.forward(new THREE.Vector3()).multiplyScalar(cfg.range).add(origin);
+    // The giant asteroid stops the beam, sparing whatever is behind it.
+    const lm = this.field.landmark;
+    const blocked = lm ? sphereEntry(origin, end, lm.position, lm.radius * 0.97) : null;
+    if (blocked) end = blocked;
     const length = end.distanceTo(origin);
     const dir = end.clone().sub(origin).normalize();
 
@@ -1075,10 +1109,10 @@ export class Game {
     b.impact.position.set(0, 0, -length);
     b.impact.scale.setScalar(90 * flicker);
     // Whatever it touches boils.
-    if (t && Math.random() < 0.6) this.effects.fire(end.clone().addScaledVector(dir, -rand(0, 20)), rand(14, 30), rand(0.5, 0.9));
+    if ((t || blocked) && Math.random() < 0.6) this.effects.fire(end.clone().addScaledVector(dir, -rand(0, 20)), rand(14, 30), rand(0.5, 0.9));
 
     const share = (this.shipStats.rayDamage * this.#pf('damage') * dt) / cfg.duration;
-    if (t && this.#inRayArc(t)) {
+    if (t && this.#inRayArc(t) && !blocked) {
       if (t.kind === 'flagship') this.#damageFlagship(share, end);
       else if (t.kind === 'subsystem') this.#damageFlagship(share, end, t);
       else if (t.kind === 'corvette') this.#damageCorvette(t, share, end);
@@ -1221,13 +1255,14 @@ export class Game {
     scout.velocity.copy(w.velocity);
     this.scene.add(scout.object);
     this.scouts.push(scout);
-    this.trails.attach(scout, { color: this.colors.ice.clone().multiplyScalar(0.45), width: 0.9, offset: TRAIL_OFFSET });
+    this.trails.attach(scout, { color: this.colors.ice.clone().multiplyScalar(0.45), width: 0.9, offset: scout.tail });
     this.sound.launch();
     return scout;
   }
 
   #spawnDrone(position, fromFlagship) {
-    const d = new Drone(this.droneTemplate, position, this.sectorIndex, this.colors.flareHot);
+    const template = this.droneTemplates[randInt(0, this.droneTemplates.length - 1)];
+    const d = new Drone(template, position, this.sectorIndex, this.colors.flareHot);
     d.warp = 0;
     d.object.visible = true;
     d.kind = 'fighter';
@@ -1235,7 +1270,7 @@ export class Game {
     d.fromFlagship = fromFlagship;
     this.scene.add(d.object);
     this.drones.push(d);
-    this.trails.attach(d, { color: this.colors.flareHot.clone().multiplyScalar(0.5), width: 0.9, offset: TRAIL_OFFSET });
+    this.trails.attach(d, { color: this.colors.flareHot.clone().multiplyScalar(0.5), width: 0.9, offset: d.tail });
     return d;
   }
 
@@ -1329,6 +1364,7 @@ export class Game {
 
   #obstacles() {
     const list = this.field.rocks.slice();
+    if (this.field.landmark) list.push(this.field.landmark);
     if (!this.warship.dead) list.push(...this.warship.colliders);
     if (this.flagship && !this.flagship.dead) list.push(...this.flagship.colliders);
     for (const c of this.corvettes) if (!c.dead) list.push(...c.colliders);
@@ -1686,6 +1722,7 @@ export class Game {
     const f = this.flagship && !this.flagship.dead ? this.flagship : null;
     const pilot = this.pilot && !this.pilot.dead ? this.pilot : null;
     const rocks = this.field.rocks;
+    const lm = this.field.landmark;
 
     for (const b of this.bolts.active) {
       if (b.dead) continue;
@@ -1765,6 +1802,12 @@ export class Game {
           break;
         }
       }
+      // So does the giant asteroid, which nothing breaks.
+      if (!b.dead && lm && segmentHitsSphere(b.previous, b.position, lm.position, lm.radius)) {
+        b.dead = true;
+        const at = sphereEntry(b.previous, b.position, lm.position, lm.radius) ?? b.position;
+        this.effects.impact(at, b.hostile ? this.colors.hostile : DUST_TINT[0]);
+      }
       if (b.dead || b.hostile) continue;
       for (const d of this.drones) {
         if (d.dead) continue;
@@ -1779,6 +1822,10 @@ export class Game {
     // Capital ships plow through rocks; yours takes damage doing it.
     for (const rock of rocks) {
       if (rock.dead) continue;
+      if (lm && rock.position.distanceTo(lm.position) < lm.radius + rock.radius * 0.8) {
+        this.#shatterRock(rock, rock.position.clone().sub(lm.position).normalize());
+        continue;
+      }
       if (!w.dead && rock.position.distanceToSquared(w.position) < (rock.radius + 260) ** 2) {
         const c = w.hitSphere(rock.position, rock.radius * 0.9);
         if (c) {
@@ -1809,6 +1856,24 @@ export class Game {
       }
     }
 
+    // The giant asteroid shoves capital ships back out; yours is damaged if it hits hard.
+    if (lm) {
+      for (const ship of [w, f, ...this.corvettes]) {
+        if (!ship || ship.dead || ship.position.distanceTo(lm.position) > lm.radius + ship.extent) continue;
+        const c = ship.hitSphere(lm.position, lm.radius);
+        if (!c) continue;
+        const normal = new THREE.Vector3().subVectors(c.position, lm.position).normalize();
+        ship.position.addScaledVector(normal, lm.radius + c.radius - c.position.distanceTo(lm.position));
+        const closing = -ship.velocity.dot(normal);
+        if (closing > 0) ship.velocity.addScaledVector(normal, closing);
+        if (ship === w && closing > 4 && this.time - (this.alerts.landmarkAt ?? -99) > 4) {
+          this.alerts.landmarkAt = this.time;
+          this.#damageWarship(clamp(closing * 2.5, 10, 60), c.position.clone().addScaledVector(normal, -c.radius));
+          this.crew.say('Damage control', "We've struck the asteroid! Helm, take us off it.");
+        }
+      }
+    }
+
     for (const t of this.torpedoes) {
       if (t.dead) continue;
       if (!t.hostile) {
@@ -1829,6 +1894,7 @@ export class Game {
           break;
         }
       }
+      if (!t.dead && lm && t.position.distanceTo(lm.position) < lm.radius + 2) this.#destroyTorpedo(t, false);
     }
 
     // Fighters that fly into hulls or rocks don't survive it.
@@ -1853,6 +1919,7 @@ export class Game {
           break;
         }
       }
+      if (!d.dead && lm && d.position.distanceTo(lm.position) < lm.radius + 2) this.#destroyDrone(d, false);
     }
 
     if (pilot) this.#collidePilot(pilot);
@@ -1871,7 +1938,8 @@ export class Game {
   }
 
   #collidePilot(p) {
-    for (const rock of this.field.rocks) {
+    const lm = this.field.landmark;
+    for (const rock of lm ? [...this.field.rocks, lm] : this.field.rocks) {
       if (rock.dead) continue;
       const gap = p.position.distanceTo(rock.position) - rock.radius - p.radius;
       if (gap >= 0) continue;
@@ -2745,6 +2813,8 @@ export class Game {
     };
     if (this.planet && blocks(this.planet.group.position, this.planet.radius)) return false;
     for (const r of this.field.rocks) if (!r.dead && blocks(r.position, r.radius * 0.85)) return false;
+    const lm = this.field.landmark;
+    if (lm && blocks(lm.position, lm.radius)) return false;
     for (const s of [this.warship, this.flagship, ...this.corvettes]) {
       if (!s || s.dead) continue;
       for (const c of s.colliders) if (blocks(c.position, c.radius)) return false;
@@ -2824,7 +2894,9 @@ export class Game {
     this.map.draw({
       radius: CONFIG.sector.radius,
       fog: { cells: this.fog, size: FOG_SIZE, extent: this.fogExtent },
-      rocks: this.field.rocks.filter((r) => r.size === 'large' && explored(r.position)),
+      rocks: this.field.rocks
+        .filter((r) => r.size === 'large' && explored(r.position))
+        .concat(this.field.landmark && explored(this.field.landmark.position) ? [this.field.landmark] : []),
       sensors: this.#sensors(),
       contacts,
       scouts: this.scouts.filter((s) => !s.dead),

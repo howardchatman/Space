@@ -19,6 +19,16 @@ ES modules, no build step, no npm dependencies.
   children of `object` before the end of `buildCapitalShip`, which sorts them into sections by z.
 - `game.torpedoes` holds both sides' torpedoes: check `t.hostile` (corvettes' are hostile; yours aren't).
   The flagship's point defense rate scales with its working gun batteries.
+- Ready-made 3D models (Quaternius ships, NASA spacecraft, Bennu) live in `assets/models` as `.gltf` +
+  `.bin` + `.webp`, never GLB with embedded images: those decode through blob: URLs, which strict page
+  policies (like the claude.ai artifact) can block. `src/models.js` loads them, swaps in matte materials and
+  hands out sized copies; credit new ones in `assets/models/README.md`. Fighters and scouts are
+  `shipTemplate()` in `drone.js`, corvette hulls are baked once in `corvetteHull()` in `shipmodel.js` (in
+  meters, bow to -Z, so plating panels come out right), derelicts are `Satellite`s and Bennu is the
+  landmark. Every use falls back to the procedural model if a file doesn't load; Start waits for loading.
+- `game.field.landmark` is a giant asteroid nothing can break. Code that handles rocks usually needs it
+  too: bolts, the death ray, torpedoes, fighters, the scout you fly, ships (pushed out; capital ships steer
+  around anything in their `avoid` list), the map and `#sunClear`.
 - Planets come in two kinds with the same interface (`group`, `radius`, `shineColor`, `update`, `dispose`):
   `world/planet.js` (rocky) and `world/gasgiant.js` (bands and rings). `sector.js` picks one per sector.
 - The lens flare hides when the sun is blocked; on the bridge, `#sunClear` in `game.js` uses the room's
@@ -47,6 +57,7 @@ ES modules, no build step, no npm dependencies.
   `game.update(1 / 30)` in a loop rather than waiting). Exercise recon, the map, a flagship fight, the
   death ray, power orders, corvettes and torpedoes (theirs and yours), evasive maneuvers, damage control,
   the flagship's retreat, subsystem targeting, engineering, piloting a scout, the touch helm pad, warp,
-  the after-action report and refit, a loss (the warship breaks up; a new run must mend it), and phone-sized
-  viewports with touch in both orientations.
+  the after-action report and refit, a loss (the warship breaks up; a new run must mend it), the giant
+  asteroid (ramming it, a course around it, firing at something behind it), loading with the model files
+  blocked (procedural fallbacks), and phone-sized viewports with touch in both orientations.
   `game.photo = { position, target }` gives a free camera for screenshots.

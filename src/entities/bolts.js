@@ -122,3 +122,20 @@ export function segmentHitsSphere(from, to, center, radius) {
   const pz = from.z + dz * t - center.z;
   return px * px + py * py + pz * pz <= radius * radius;
 }
+
+/** Where the segment from -> to first enters the sphere, or null if it doesn't (or starts inside). */
+export function sphereEntry(from, to, center, radius) {
+  const dir = new THREE.Vector3().subVectors(to, from);
+  const length = dir.length();
+  if (length < 1e-6) return null;
+  dir.divideScalar(length);
+  const rel = new THREE.Vector3().subVectors(from, center);
+  const b = rel.dot(dir);
+  const c = rel.lengthSq() - radius * radius;
+  if (c <= 0) return null;
+  const disc = b * b - c;
+  if (disc < 0) return null;
+  const t = -b - Math.sqrt(disc);
+  if (t < 0 || t > length) return null;
+  return dir.multiplyScalar(t).add(from);
+}

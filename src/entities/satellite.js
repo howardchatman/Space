@@ -24,11 +24,12 @@ function panelTexture() {
 let shared = null;
 
 /**
- * A derelict satellite drifting in the sector: a gold-foiled bus, two solar wings and a dish. Getting
- * close with the warship or a scout salvages its energy cells once.
+ * A derelict satellite drifting in the sector, tumbling slowly with a beacon blinking until it's
+ * salvaged. Getting close with the warship or a scout salvages its energy cells once. `model` is one of
+ * the NASA spacecraft (models.js); without it, a gold-foiled bus with two solar wings and a dish.
  */
 export class Satellite {
-  constructor(position, name) {
+  constructor(position, name, model = null) {
     if (!shared) {
       shared = {
         bus: new THREE.MeshStandardMaterial({ color: 0xc9a227, metalness: 0.85, roughness: 0.35 }),
@@ -47,6 +48,36 @@ export class Satellite {
     this.spinAxis = randomUnit(new THREE.Vector3());
     this.spinRate = rand(0.03, 0.12);
 
+    let top = 4; // where the beacon sits, clear of the hull
+    if (model) {
+      this.object.add(model);
+      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+      this.radius = Math.max(28, size.length() * 0.3);
+      top = size.y / 2 + 2;
+    } else {
+      this.#buildProbe();
+    }
+
+    this.beacon = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTexture(),
+      color: new THREE.Color(2.5, 1.6, 0.4),
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+    }));
+    this.beacon.position.set(0, top, 0);
+    this.beacon.scale.setScalar(6);
+    this.object.add(this.beacon);
+    this._q = new THREE.Quaternion();
+  }
+
+  update(dt, time) {
+    this.position.addScaledVector(this.velocity, dt);
+    this.object.quaternion.premultiply(this._q.setFromAxisAngle(this.spinAxis, this.spinRate * dt));
+    this.beacon.visible = !this.salvaged && time % 2 < 0.2;
+  }
+
+  #buildProbe() {
     const bus = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 9), shared.bus);
     this.object.add(bus);
     const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 34, 6), shared.frame);
@@ -63,23 +94,5 @@ export class Satellite {
     dish.position.set(0, 3, 4.5);
     dish.rotation.x = -0.9;
     this.object.add(dish);
-
-    this.beacon = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTexture(),
-      color: new THREE.Color(2.5, 1.6, 0.4),
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      transparent: true,
-    }));
-    this.beacon.position.set(0, 4, 0);
-    this.beacon.scale.setScalar(6);
-    this.object.add(this.beacon);
-    this._q = new THREE.Quaternion();
-  }
-
-  update(dt, time) {
-    this.position.addScaledVector(this.velocity, dt);
-    this.object.quaternion.premultiply(this._q.setFromAxisAngle(this.spinAxis, this.spinRate * dt));
-    this.beacon.visible = !this.salvaged && time % 2 < 0.2;
   }
 }

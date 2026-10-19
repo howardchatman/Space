@@ -20,8 +20,9 @@ python3 -m http.server 8000
 ## How a sector plays
 
 1. **Arrive.** The warship drops out of warp at the edge of a 14 km sector of asteroid clusters,
-   derelict satellites, enemy fighter patrols and a planet on the horizon: a rocky world, or a gas
-   giant with rings.
+   derelict spacecraft, enemy fighter patrols and a planet on the horizon: a rocky world, or a gas
+   giant with rings. Most sectors also have a giant asteroid that nothing can break: ships steer around
+   it, and it stops shots, torpedoes and even the death ray, so it makes good cover.
 2. **Search.** The enemy flagship is far away and not on your scanners. **Send out the recon**: four
    scouts launch from the hangar, fan out ahead and reveal everything near them. The tactical map shows
    what's been explored; switch it to **Send recon** and tap a point to send the nearest scout there.
@@ -121,10 +122,14 @@ listen; use the buttons and keys there.
   plumes, a turning radar dish, deck lights and navigation lights. Shields ripple where they're hit.
 - **Explosions** are billowing fireballs that cool into smoke, with shock rings and burning hull shards.
   A destroyed capital ship breaks in two and the halves drift apart, burning along the break. Damaged
-  ships burn on deck; on the bridge, hits make the screens and lights stutter.
+  ships burn on deck; on the bridge, heavy hits make the lights dip.
 - **The death ray** draws sparks into the emitter as it charges, then fires a beam of twisting plasma that
   sets its target boiling.
 - **Small craft** leave glowing engine trails; **the bridge crew** sit at their consoles and turn to report.
+- **Ready-made models**: enemy fighters (three designs), recon scouts and corvette hulls are Quaternius's
+  low-poly spaceships. The derelicts are NASA's models of Hubble, the International Space Station, Skylab,
+  a TDRS relay satellite, Cassini and Juno, and the giant asteroid is NASA's shape model of Bennu. If the
+  model files can't load, the game falls back to its own procedural ships.
 - **Rendering** is HDR with bloom and a filmic tone curve.
 
 ## Project layout
@@ -134,6 +139,7 @@ index.html               page markup: 3D view, HUD panels, command bar, map, eng
 styles.css               all styling; color tokens here are also used by the 3D scene, HUD and map
 src/
   main.js                boots the game, wires crew voice and voice orders, runs the frame loop
+  models.js              loads the 3D models in assets/models and hands out sized copies
   config.js              every gameplay number (speeds, damage, ranges, timings)
   game.js                sectors, orders, weapons, sensors, damage, piloting, warp, camera
   commands.js            the orders: button labels, hotkeys and voice phrases
@@ -154,6 +160,7 @@ src/
   entities/              capital ships (model, flight, flagship AI), corvettes, torpedoes, scouts, fighters,
                          satellites, bolts, pickups
   fx/                    explosions, shields, engine trails, lens flare, shadows, warp tunnel, generated textures
+assets/models/           3D models (glTF), with their credits and licenses in its README
 vendor/three/            Three.js r170 (MIT licence) and the few add-ons the game uses
 ```
 
@@ -173,6 +180,16 @@ game.photo = null                       // back to the bridge
 
 In the repository's **Settings → Pages**, set the source to **Deploy from a branch**, pick `main` and `/ (root)`.
 The game is then live at `https://<user>.github.io/<repo>/`, where voice orders work in Chrome, Edge and Safari.
+
+## Credits
+
+- **Spaceships**: [Ultimate Spaceships Pack](https://quaternius.com/packs/ultimatespaceships.html) by
+  Quaternius, CC0 (public domain), via [this Godot conversion](https://github.com/Malcolmnixon/Quaternius-Ultimate-Spaceships-Pack).
+- **Spacecraft and the asteroid Bennu**: courtesy NASA, from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources).
+  NASA doesn't endorse this game.
+- **Three.js** (MIT licence).
+
+Details for each model are in [`assets/models/README.md`](assets/models/README.md).
 
 ## Ideas for what's next
 

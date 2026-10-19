@@ -3,6 +3,7 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { GLSL_NOISE, createNoise3D, fbm3 } from './noise.js';
 import { mulberry32, rand, randInt, randomUnit } from '../util/math.js';
+import { getModel } from '../models.js';
 
 // Geometry detail by size class: big rocks get more vertices because you see them up close.
 const DETAIL = { large: 5, medium: 4, small: 2 };
@@ -101,14 +102,31 @@ export class Asteroid {
   }
 }
 
+/**
+ * The giant asteroid some sectors are built around: too big to break, it's a landmark to steer by and
+ * cover to hide behind. Ships steer around it, shots splash on it and fighters that fly into it are lost.
+ */
+export class Landmark {
+  constructor(mesh, radius) {
+    this.kind = 'landmark';
+    this.mesh = mesh;
+    this.position = mesh.position;
+    this.radius = radius; // collision sphere: inside the equatorial ridge, outside the poles
+    this.velocity = new THREE.Vector3();
+  }
+}
+
 /** Owns the rock meshes: shared geometry variants, a few material tints, spawning and removal. */
 export class AsteroidField {
   constructor(scene, { seed = 11, lowPower = false, shadows = false } = {}) {
     this.scene = scene;
     this.shadows = shadows;
     this.rocks = [];
+    this.landmark = null;
+    this.bennu = null;
     const rng = mulberry32(seed);
     const noise = createNoise3D(seed);
+    this.noise = noise;
     this.geometries = {};
     for (const size of Object.keys(DETAIL)) {
       this.geometries[size] = Array.from({ length: VARIANTS[size] }, () => makeRockGeometry(rng, noise, DETAIL[size]));
@@ -142,8 +160,10 @@ export class AsteroidField {
     for (let i = 0; i < count; i++) {
       randomUnit(p, rng).multiplyScalar(radius * Math.cbrt(rng()));
       p.y *= 0.5;
+      p.add(center);
       const roll = rng();
-      this.spawn(roll < 0.55 ? 'large' : roll < 0.85 ? 'medium' : 'small', p.add(center));
+      if (this.landmark && p.distanceTo(this.landmark.position) < this.landmark.radius * 1.15 + 90) continue;
+      this.spawn(roll < 0.55 ? 'large' : roll < 0.85 ? 'medium' : 'small', p);
     }
   }
 
@@ -154,6 +174,48 @@ export class AsteroidField {
       q.setFromAxisAngle(rock.spinAxis, rock.spinRate * dt);
       rock.mesh.quaternion.premultiply(q);
     }
+    this.landmark?.mesh.rotateY(0.006 * dt);
+  }
+
+  /** Places the sector's giant asteroid, `radius` meters to its equator. Rocks placed after it keep clear. */
+  placeLandmark(position, radius) {
+    const mesh = new THREE.Mesh(this.#landmarkGeometry(), this.materials[1]);
+    mesh.position.copy(position);
+    mesh.scale.setScalar(radius);
+    mesh.rotation.set(rand(-0.4, 0.4), rand(0, Math.PI * 2), rand(-0.4, 0.4));
+    mesh.castShadow = mesh.receiveShadow = this.shadows;
+    this.scene.add(mesh);
+    this.landmark = new Landmark(mesh, radius * 0.9);
+    return this.landmark;
+  }
+
+  /**
+   * NASA's shape model of the asteroid Bennu (models.js) at unit radius, mottled like the other rocks,
+   * made once. A big procedural rock stands in if the model didn't load.
+   */
+  #landmarkGeometry() {
+    if (this.bennu) return this.bennu;
+    const model = getModel('bennu', 2);
+    if (!model) return this.geometries.large[0];
+    model.updateMatrixWorld(true);
+    let geometry = null;
+    model.traverse((o) => {
+      if (o.isMesh && !geometry) geometry = o.geometry.clone().applyMatrix4(o.matrixWorld);
+    });
+    for (const key of Object.keys(geometry.attributes)) if (key !== 'position' && key !== 'normal') geometry.deleteAttribute(key);
+    if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    const pos = geometry.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const tone = 0.74 + 0.26 * fbm3(this.noise, v.x * 3 + 41, v.y * 3 + 7, v.z * 3 + 19, 3);
+      colors.set([tone, tone * 0.97, tone * 0.93], i * 3);
+    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.computeBoundingSphere();
+    this.bennu = geometry;
+    return geometry;
   }
 
   remove(rock) {
@@ -169,5 +231,7 @@ export class AsteroidField {
   clear() {
     for (const rock of this.rocks) this.scene.remove(rock.mesh);
     this.rocks = [];
+    if (this.landmark) this.scene.remove(this.landmark.mesh);
+    this.landmark = null;
   }
 }
