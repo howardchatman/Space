@@ -1,47 +1,50 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CONFIG } from './config.js';
 
 /**
  * Ready-made 3D models from assets/models, loaded once at startup (credits in assets/models/README.md).
  * Quaternius spaceships fly as enemy fighters, recon scouts and corvette hulls; NASA spacecraft drift as
  * derelicts; NASA's shape model of the asteroid Bennu is a landmark. Ships face +Z, as glTF does.
  *
+ * `use` names the switch in CONFIG.models that turns each group on; switched-off models aren't loaded.
  * `engines` are exhaust positions as fractions of the model's bounds (-0.5 to 0.5 on each axis), and
  * `exhaust` the plume radius as a fraction of its width, read off renders of the ships from behind.
- * If a file can't load, the game keeps its procedural model.
+ * If a file can't load (or is switched off), the game keeps its procedural model.
  */
 const MODELS = {
-  striker: { file: 'ship-striker.gltf', engines: [[0, 0.15, -0.5]] },
-  dispatcher: { file: 'ship-dispatcher.gltf', engines: [[0, 0.15, -0.5]] },
-  omen: { file: 'ship-omen.gltf', engines: [[0, 0, -0.5]] },
-  bob: { file: 'ship-bob.gltf', engines: [[0, 0.1, -0.5]] },
-  insurgent: { file: 'ship-insurgent.gltf', engines: [[-0.15, 0.04, -0.5], [0.15, 0.04, -0.5]], exhaust: 0.08 },
-  imperial: { file: 'ship-imperial.gltf', engines: [[-0.18, 0, -0.5], [0.18, 0, -0.5]], exhaust: 0.065 },
+  striker: { file: 'ship-striker.gltf', use: 'fighters', engines: [[0, 0.15, -0.5]] },
+  dispatcher: { file: 'ship-dispatcher.gltf', use: 'fighters', engines: [[0, 0.15, -0.5]] },
+  omen: { file: 'ship-omen.gltf', use: 'fighters', engines: [[0, 0, -0.5]] },
+  bob: { file: 'ship-bob.gltf', use: 'scouts', engines: [[0, 0.1, -0.5]] },
+  insurgent: { file: 'ship-insurgent.gltf', use: 'corvettes', engines: [[-0.15, 0.04, -0.5], [0.15, 0.04, -0.5]], exhaust: 0.08 },
+  imperial: { file: 'ship-imperial.gltf', use: 'corvettes', engines: [[-0.18, 0, -0.5], [0.18, 0, -0.5]], exhaust: 0.065 },
   // Derelicts, with how big each one floats in the game (meters across its longest side).
-  hubble: { file: 'derelict-hubble.gltf', size: 50, derelict: true },
-  station: { file: 'derelict-station.gltf', size: 110, derelict: true },
-  skylab: { file: 'derelict-skylab.gltf', size: 55, derelict: true },
-  relay: { file: 'derelict-relay.gltf', size: 50, derelict: true },
-  cassini: { file: 'derelict-cassini.gltf', size: 45, derelict: true },
-  juno: { file: 'derelict-juno.gltf', size: 50, derelict: true },
-  bennu: { file: 'asteroid-bennu.gltf' },
+  hubble: { file: 'derelict-hubble.gltf', use: 'derelicts', size: 50 },
+  station: { file: 'derelict-station.gltf', use: 'derelicts', size: 110 },
+  skylab: { file: 'derelict-skylab.gltf', use: 'derelicts', size: 55 },
+  relay: { file: 'derelict-relay.gltf', use: 'derelicts', size: 50 },
+  cassini: { file: 'derelict-cassini.gltf', use: 'derelicts', size: 45 },
+  juno: { file: 'derelict-juno.gltf', use: 'derelicts', size: 50 },
+  bennu: { file: 'asteroid-bennu.gltf', use: 'asteroid' },
 };
 
 export const FIGHTERS = ['striker', 'dispatcher', 'omen'];
 export const SCOUT = 'bob';
 export const CORVETTES = ['insurgent', 'imperial'];
-export const DERELICTS = Object.keys(MODELS).filter((name) => MODELS[name].derelict);
+export const DERELICTS = Object.keys(MODELS).filter((name) => MODELS[name].use === 'derelicts');
 
 const library = new Map(); // name -> { object, size }
 let ready = false;
 
 /**
- * Starts loading every model. Resolves once they've all arrived or failed, or after `timeout` ms, so a
+ * Starts loading every model that's switched on. Resolves once they've all arrived or failed, or after `timeout` ms, so a
  * slow connection never keeps the player from starting (models that arrive later are used from then on).
  */
 export function loadModels({ base = 'assets/models/', timeout = 20000 } = {}) {
   const loader = new GLTFLoader();
-  const jobs = Object.entries(MODELS).map(([name, spec]) => loadScene(loader, base, spec.file).then(
+  const wanted = Object.entries(MODELS).filter(([, spec]) => CONFIG.models[spec.use]);
+  const jobs = wanted.map(([name, spec]) => loadScene(loader, base, spec.file).then(
     (scene) => library.set(name, prepare(scene, spec)),
     (error) => console.warn(`Couldn't load ${spec.file}; using the built-in model instead.`, error),
   ));
@@ -166,7 +169,7 @@ function prepare(scene, spec) {
         transparent: m.transparent,
         opacity: m.opacity,
         alphaTest: m.alphaTest,
-        side: spec.derelict ? THREE.DoubleSide : m.side,
+        side: spec.use === 'derelicts' ? THREE.DoubleSide : m.side,
         metalness: Math.min(m.metalness ?? 0, 0.4),
         roughness: Math.max(m.roughness ?? 1, 0.55),
       });

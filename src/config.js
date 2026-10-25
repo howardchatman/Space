@@ -3,6 +3,9 @@ export const CONFIG = {
   maxPixelRatio: 2,
   fov: 72, // vertical field of view in degrees on a landscape screen
 
+  // Which things use the ready-made 3D models in assets/models; false keeps the game's own procedural look.
+  models: { fighters: false, scouts: false, corvettes: true, derelicts: true, asteroid: true },
+
   // The sector you explore each level. The enemy flagship hides somewhere inside it.
   sector: {
     radius: 7000, // soft boundary around the origin

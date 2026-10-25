@@ -269,11 +269,16 @@ export class Game {
    */
   #buildTemplates() {
     if (this.templatesFromModels) return;
+    if (!this.builtIn) {
+      this.builtIn = { fighter: buildDroneModel(this.colors.hostile), scout: buildDroneModel(this.colors.ice, 0xb9bec7) };
+      if (this.shadows) for (const t of Object.values(this.builtIn)) useShadows(t);
+    }
     const fighters = FIGHTERS.map((name) => shipTemplate(name, this.colors.hostile, 11)).filter(Boolean);
-    this.droneTemplates = fighters.length ? fighters : [buildDroneModel(this.colors.hostile)];
-    this.scoutTemplate = shipTemplate(SCOUT, this.colors.ice, 10) ?? buildDroneModel(this.colors.ice, 0xb9bec7);
-    if (this.shadows) for (const t of [...this.droneTemplates, this.scoutTemplate]) useShadows(t);
-    this.templatesFromModels = modelsReady() && fighters.length > 0;
+    const scout = shipTemplate(SCOUT, this.colors.ice, 10);
+    if (this.shadows) for (const t of [...fighters, scout]) if (t) useShadows(t);
+    this.droneTemplates = fighters.length ? fighters : [this.builtIn.fighter];
+    this.scoutTemplate = scout ?? this.builtIn.scout;
+    this.templatesFromModels = modelsReady();
   }
 
   /** Clears the sector and lays out a new one around the warship. */

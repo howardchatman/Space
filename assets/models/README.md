@@ -13,10 +13,10 @@ also CC0.
 
 | Files | Ship | In the game |
 | --- | --- | --- |
-| `ship-striker.*` | Striker (red) | Enemy fighter |
-| `ship-dispatcher.*` | Dispatcher (red) | Enemy fighter |
-| `ship-omen.*` | Omen (red) | Enemy fighter |
-| `ship-bob.*` | Bob (blue) | Recon scout |
+| `ship-striker.*` | Striker (red) | Enemy fighter (off by default) |
+| `ship-dispatcher.*` | Dispatcher (red) | Enemy fighter (off by default) |
+| `ship-omen.*` | Omen (red) | Enemy fighter (off by default) |
+| `ship-bob.*` | Bob (blue) | Recon scout (off by default) |
 | `ship-insurgent.*` | Insurgent (red) | Corvette hull, scaled up to 90 m |
 | `ship-imperial.*` | Imperial (red) | Corvette hull, scaled up to 90 m |
 
@@ -44,3 +44,4 @@ doesn't imply that NASA endorses it.
   their textures resized.
 - All textures were converted to WebP and stored next to the `.gltf` files.
 - In the game, materials are swapped for matte ones and each model is rescaled; see `src/models.js`.
+  `models` in `src/config.js` switches each kind on or off.

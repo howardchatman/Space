@@ -126,10 +126,11 @@ listen; use the buttons and keys there.
 - **The death ray** draws sparks into the emitter as it charges, then fires a beam of twisting plasma that
   sets its target boiling.
 - **Small craft** leave glowing engine trails; **the bridge crew** sit at their consoles and turn to report.
-- **Ready-made models**: enemy fighters (three designs), recon scouts and corvette hulls are Quaternius's
-  low-poly spaceships. The derelicts are NASA's models of Hubble, the International Space Station, Skylab,
-  a TDRS relay satellite, Cassini and Juno, and the giant asteroid is NASA's shape model of Bennu. If the
-  model files can't load, the game falls back to its own procedural ships.
+- **Ready-made models**: corvette hulls are Quaternius's low-poly spaceships. The derelicts are NASA's
+  models of Hubble, the International Space Station, Skylab, a TDRS relay satellite, Cassini and Juno, and
+  the giant asteroid is NASA's shape model of Bennu. Fighters and recon scouts keep the game's own models,
+  which are easier to spot in a fight; Quaternius fighter and scout models are included too. Switch each
+  kind on or off with `models` in `src/config.js`. If a model file can't load, the game uses its own.
 - **Rendering** is HDR with bloom and a filmic tone curve.
 
 ## Project layout
