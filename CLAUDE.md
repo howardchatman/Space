@@ -42,6 +42,10 @@ ES modules, no build step, no npm dependencies.
 - The scene renders in HDR: anything brighter than about 0.9 blooms. Keep glows near the camera (bolts,
   muzzle flashes, cockpit lamps, console screens) dim, or they flood the screen. Keep hull materials matte:
   shiny decks mirror the sun.
+- Never `pow()` a value that can be negative, even by a hair (write `x * x`, or clamp the base first), and
+  never normalize something that can be zero. GLSL leaves both undefined and many GPUs return NaN, which the
+  bloom smears into black blocks over the view. Headless SwiftShader returns a number instead, so tests won't
+  show it. The bloom's high pass drops NaN pixels (`engine/renderer.js`) as a last line of defense.
 - Never strobe the view: no per-frame random brightness, and nothing that flashes more than about three
   times a second (it's hard on the eyes and reads as screen flicker). Hit reactions on the bridge are one
   smooth dip and recovery; the red damage vignette eases in; the warship's own shield is faint from inside.
