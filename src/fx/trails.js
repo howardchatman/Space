@@ -20,7 +20,7 @@ const FRAGMENT = /* glsl */ `
   varying float vT;
   varying float vEdge;
   void main() {
-    float along = pow(1.0 - vT, 1.6);
+    float along = pow(max(1.0 - vT, 0.0), 1.6);
     float across = 1.0 - vEdge * vEdge;
     gl_FragColor = vec4(uColor * along * across * uFade, 1.0);
   }

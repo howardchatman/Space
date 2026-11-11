@@ -60,7 +60,7 @@ const FIREBALL_FRAGMENT = /* glsl */ `
     vec2 q = p / (0.6 + 0.6 * age);
     float billow = fbm(q * 2.6 + uSeed);
     float detail = fbm(q * 6.0 - uSeed * 1.3 + age * 1.5);
-    float radius = (0.42 + 0.5 * sqrt(age)) * (0.7 + 0.5 * billow);
+    float radius = (0.42 + 0.5 * sqrt(max(age, 0.0))) * (0.7 + 0.5 * billow);
     float body = 1.0 - smoothstep(radius - 0.12, radius + 0.02, r);
     if (body <= 0.001) discard;
     // Temperature falls toward the edge and with age; the noise breaks it into tongues of flame.
@@ -90,8 +90,10 @@ const SHOCK_FRAGMENT = /* glsl */ `
     float k = floor((a + 3.14159) * 9.0);
     float rag = mix(hash(k), hash(k + 1.0), fract((a + 3.14159) * 9.0)) * 0.08;
     float width = 0.035 + 0.07 * uAge;
-    float ring = exp(-pow((r - 0.86 + rag) / width, 2.0));
-    float fade = pow(1.0 - uAge, 2.0);
+    float front = (r - 0.86 + rag) / width;
+    float ring = exp(-front * front);
+    float life = max(1.0 - uAge, 0.0);
+    float fade = life * life;
     gl_FragColor = vec4(uColor * ring * fade, 1.0);
   }
 `;

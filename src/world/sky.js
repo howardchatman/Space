@@ -63,7 +63,8 @@ export function bakeMilkyWay(renderer, size, nebula = null) {
 
         // Dark dust lanes along the mid-plane.
         float laneWidth = 0.03 + 0.05 * bulge;
-        float lane = exp(-pow((lat - 0.025 * sin(lon * 3.0)) / laneWidth, 2.0));
+        float laneOffset = (lat - 0.025 * sin(lon * 3.0)) / laneWidth;
+        float lane = exp(-laneOffset * laneOffset); // not pow(): undefined for negatives, NaN on many GPUs
         float dust = smoothstep(-0.1, 0.45, fbm(d * 7.0 + 11.0, 6)) * lane;
         glow *= 1.0 - 0.85 * dust;
 

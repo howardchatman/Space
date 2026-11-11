@@ -47,7 +47,7 @@ function plating({ color, windowColor, windows = true, metalness = 0.3, roughnes
         varying vec3 vObjNormal;
         float plateHash(vec2 c) { return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        vec3 an = abs(normalize(vObjNormal));
+        vec3 an = abs(vObjNormal) / max(length(vObjNormal), 1e-6);
         vec2 puv = an.x > an.y && an.x > an.z ? vObjPos.zy : (an.y > an.z ? vObjPos.xz : vObjPos.xy);
         vec2 cellSize = vec2(8.0, 4.0);
         vec2 cell = floor(puv / cellSize);

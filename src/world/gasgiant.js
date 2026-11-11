@@ -210,7 +210,7 @@ export class GasGiant {
 
           vec3 col = albedo * ${SUN} * diffuse * limb * (1.0 - 0.8 * ringShadow);
           // Haze glowing along the sunlit limb.
-          float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+          float rim = pow(clamp(1.0 - dot(n, v), 0.0, 1.0), 3.0); // rounding can push dot past 1
           col += uHaze * rim * smoothstep(-0.1, 0.4, ndl) * 0.45;
           gl_FragColor = vec4(col, 1.0);
         }

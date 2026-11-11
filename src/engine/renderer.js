@@ -28,6 +28,14 @@ export class Pipeline {
     this.composer = new EffectComposer(this.renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.7, 0.55, 0.9);
+    // One NaN pixel (a model's broken normal, say) would be smeared by the bloom blur into black blocks
+    // across the whole view, so the bloom ignores anything that isn't a finite, non-negative color.
+    const highPass = this.bloom.materialHighPassFilter;
+    const read = 'vec4 texel = texture2D( tDiffuse, vUv );';
+    if (!highPass.fragmentShader.includes(read)) throw new Error('Bloom shader changed: re-add the NaN guard');
+    highPass.fragmentShader = highPass.fragmentShader.replace(read, `${read}
+      if ( any( isnan( texel ) ) ) texel = vec4( 0.0 );
+      texel = clamp( texel, 0.0, 60000.0 );`);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
   }

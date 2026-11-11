@@ -48,7 +48,8 @@ export class ShieldBubble {
             if (h.w < 0.0 || h.w > 1.0) continue;
             float d = distance(vDir, h.xyz);
             float fade = 1.0 - h.w;
-            float ring = exp(-pow((d - h.w * 0.85) / 0.05, 2.0)) * fade * fade;
+            float front = (d - h.w * 0.85) / 0.05;
+            float ring = exp(-front * front) * fade * fade;
             float flash = exp(-d * d / 0.006) * max(0.0, 1.0 - h.w * 4.0);
             float wash = exp(-d * d / 0.08) * fade * 0.25;
             glow += ring * 0.9 + flash * 2.0 + wash;
@@ -58,7 +59,8 @@ export class ShieldBubble {
           vec3 g = abs(fract(vDir * 18.0) - 0.5);
           float lattice = 0.45 + 0.55 * smoothstep(0.4, 0.5, max(g.x, max(g.y, g.z)));
           vec3 view = normalize(cameraPosition - vWorld);
-          float rim = pow(1.0 - abs(dot(normalize(vNormalW), view)), 2.0);
+          float edge = max(1.0 - abs(dot(normalize(vNormalW), view)), 0.0);
+          float rim = edge * edge;
           gl_FragColor = vec4(uColor * glow * lattice * (0.55 + 1.2 * rim) * uStrength, 1.0);
         }
       `,

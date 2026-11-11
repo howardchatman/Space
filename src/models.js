@@ -182,6 +182,35 @@ function prepare(scene, spec) {
   scene.traverse((o) => {
     if (!o.isMesh) return;
     o.material = Array.isArray(o.material) ? o.material.map(matte) : matte(o.material);
+    repairNormals(o.geometry);
   });
   return { object, size };
+}
+
+/**
+ * Replaces broken normals (NaN or zero length; some files have a few) with ones worked out from the faces
+ * around them. Lit, a broken normal makes NaN pixels, which some GPUs turn into black blocks.
+ */
+function repairNormals(geometry) {
+  const normals = geometry.attributes.normal;
+  if (!normals) {
+    geometry.computeVertexNormals();
+    return;
+  }
+  const bad = [];
+  for (let i = 0; i < normals.count; i++) {
+    const length = Math.hypot(normals.getX(i), normals.getY(i), normals.getZ(i));
+    if (!(length > 1e-6)) bad.push(i);
+  }
+  if (!bad.length) return;
+  const fresh = geometry.clone();
+  fresh.computeVertexNormals();
+  const n = new THREE.Vector3();
+  for (const i of bad) {
+    n.fromBufferAttribute(fresh.attributes.normal, i);
+    if (!(n.length() > 1e-6)) n.set(0, 1, 0);
+    normals.setXYZ(i, n.x, n.y, n.z);
+  }
+  normals.needsUpdate = true;
+  fresh.dispose();
 }

@@ -175,7 +175,7 @@ export class Planet {
           col += vec3(1.0, 0.62, 0.3) * city * (1.0 - twilight) * (1.0 - cloud * 0.85) * 0.28;
 
           // Atmospheric haze: thin blue overhead, thick toward the limb, warm along the terminator.
-          float limb = pow(1.0 - max(dot(n, v), 0.0), 2.2);
+          float limb = pow(clamp(1.0 - dot(n, v), 0.0, 1.0), 2.2); // rounding can push dot past 1
           vec3 haze = mix(vec3(1.0, 0.38, 0.14), vec3(0.28, 0.52, 1.0), smoothstep(-0.02, 0.28, ndl));
           haze *= 1.5 * smoothstep(-0.12, 0.35, ndl);
           float hazeAmount = (0.06 + 0.94 * limb) * smoothstep(-0.14, 0.08, ndl);
